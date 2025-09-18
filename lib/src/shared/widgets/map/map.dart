@@ -409,20 +409,37 @@ class MapPainter extends CustomPainter {
 class MapWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    // You need to initialize points, triangles, graph, startPoint, endPoint
+    // Initialize points, triangles, graph, startPoint, endPoint
+    final points = poissonDiskSampling(Size(450, 450), 40, 60, 30, [
+      [225, 450],
+      [225, 0],
+    ]);
+    final triangles = delaunayTriangles(points);
+
+    final graph = MapGraph();
+    for (final tri in triangles) {
+      for (int i = 0; i < 3; i++) {
+        final a = tri[i];
+        final b = tri[(i + 1) % 3];
+        graph.addLink(a, b, sqrt(pow(a[0] - b[0], 2) + pow(a[1] - b[1], 2)));
+      }
+    }
+
+    final startPoint = [
+      [225.0, 450.0],
+    ];
+    final endPoint = [
+      [225.0, 0.0],
+    ];
     return CustomPaint(
       size: Size(500, 500),
       painter: MapPainter(
         canvasSize: 500,
-        points: [], // Fill with Poisson Disk points
-        triangles: [], // Fill with Delaunay triangles
-        startPoint: [
-          [225, 450],
-        ],
-        endPoint: [
-          [225, 0],
-        ],
-        graph: MapGraph(),
+        points: points, // Fill with Poisson Disk points
+        triangles: triangles, // Fill with Delaunay triangles
+        startPoint: startPoint,
+        endPoint: endPoint,
+        graph: graph,
       ),
     );
   }

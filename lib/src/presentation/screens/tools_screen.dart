@@ -9,6 +9,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:hanahaki_tools/src/core/theme/dimens.dart';
 import 'package:hanahaki_tools/src/shared/widgets/buttons/square_button.dart';
 import 'package:hanahaki_tools/src/shared/widgets/dice/dice.dart';
+import 'package:hanahaki_tools/src/shared/widgets/map/map.dart';
 
 @RoutePage()
 class ToolsScreen extends StatefulWidget {
@@ -47,7 +48,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
       case 'Damage Calculation':
         return Center(child: Text('Damage Calculation UX'));
       case 'Map Generator':
-        return Center(child: Text('Map Generator UX'));
+        return Center(child: MapWidget());
       case 'Ultimate Check':
         return Center(
           child: Column(
