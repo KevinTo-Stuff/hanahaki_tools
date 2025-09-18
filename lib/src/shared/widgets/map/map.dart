@@ -95,8 +95,97 @@ List<List<double>> poissonDiskSampling(
 }
 
 List<List<List<double>>> delaunayTriangles(List<List<double>> points) {
-  // Implement or use a package
-  return [];
+  // Basic Bowyer-Watson Delaunay triangulation (brute-force, 2D)
+  if (points.length < 3) return [];
+
+  // Super triangle covering all points
+  final minX = points.map((p) => p[0]).reduce(min);
+  final minY = points.map((p) => p[1]).reduce(min);
+  final maxX = points.map((p) => p[0]).reduce(max);
+  final maxY = points.map((p) => p[1]).reduce(max);
+  final dx = maxX - minX;
+  final dy = maxY - minY;
+  final deltaMax = max(dx, dy) * 10;
+  final midx = (minX + maxX) / 2;
+  final midy = (minY + maxY) / 2;
+
+  final superTriangle = [
+    [midx - deltaMax, midy - deltaMax],
+    [midx, midy + deltaMax],
+    [midx + deltaMax, midy - deltaMax],
+  ];
+
+  List<List<List<double>>> triangles = [
+    [superTriangle[0], superTriangle[1], superTriangle[2]],
+  ];
+
+  bool pointInCircumcircle(List<double> p, List<List<double>> tri) {
+    final ax = tri[0][0], ay = tri[0][1];
+    final bx = tri[1][0], by = tri[1][1];
+    final cx = tri[2][0], cy = tri[2][1];
+    final dx = p[0], dy = p[1];
+
+    final a = ax - dx;
+    final b = ay - dy;
+    final c = (ax - dx) * (ax - dx) + (ay - dy) * (ay - dy);
+
+    final d = bx - dx;
+    final e = by - dy;
+    final f = (bx - dx) * (bx - dx) + (by - dy) * (by - dy);
+
+    final g = cx - dx;
+    final h = cy - dy;
+    final i = (cx - dx) * (cx - dx) + (cy - dy) * (cy - dy);
+
+    final det =
+        (a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g));
+    return det > 0;
+  }
+
+  for (final p in points) {
+    final badTriangles = <List<List<double>>>[];
+    for (final tri in triangles) {
+      if (pointInCircumcircle(p, tri)) {
+        badTriangles.add(tri);
+      }
+    }
+
+    final edgeSet = <List<List<double>>>[];
+    for (final tri in badTriangles) {
+      for (int i = 0; i < 3; i++) {
+        final edge = [tri[i], tri[(i + 1) % 3]];
+        bool shared = false;
+        for (final otherTri in badTriangles) {
+          if (identical(tri, otherTri)) continue;
+          for (int j = 0; j < 3; j++) {
+            final otherEdge = [otherTri[j], otherTri[(j + 1) % 3]];
+            if ((edge[0] == otherEdge[1] && edge[1] == otherEdge[0]) ||
+                (edge[0] == otherEdge[0] && edge[1] == otherEdge[1])) {
+              shared = true;
+              break;
+            }
+          }
+          if (shared) break;
+        }
+        if (!shared) edgeSet.add(edge);
+      }
+    }
+
+    triangles.removeWhere((tri) => badTriangles.contains(tri));
+    for (final edge in edgeSet) {
+      triangles.add([edge[0], edge[1], p]);
+    }
+  }
+
+  // Remove triangles using super triangle vertices
+  triangles = triangles.where((tri) {
+    for (final v in superTriangle) {
+      if (tri.contains(v)) return false;
+    }
+    return true;
+  }).toList();
+
+  return triangles;
 }
 
 List<List<double>> aStarPath(
@@ -104,14 +193,82 @@ List<List<double>> aStarPath(
   List<double> start,
   List<double> end,
 ) {
-  // Implement or use a package
+  // Basic A* pathfinding algorithm
+  final openSet = <List<double>>[start];
+  final cameFrom = <List<double>, List<double>>{};
+  final gScore = <List<double>, double>{};
+  final fScore = <List<double>, double>{};
+
+  gScore[start] = 0;
+  fScore[start] = sqrt(pow(start[0] - end[0], 2) + pow(start[1] - end[1], 2));
+
+  while (openSet.isNotEmpty) {
+    // Find node in openSet with lowest fScore
+    openSet.sort(
+      (a, b) => (fScore[a] ?? double.infinity).compareTo(
+        fScore[b] ?? double.infinity,
+      ),
+    );
+    final current = openSet.first;
+
+    if (current[0] == end[0] && current[1] == end[1]) {
+      // Reconstruct path
+      final path = <List<double>>[current];
+      var node = current;
+      while (cameFrom.containsKey(node)) {
+        node = cameFrom[node]!;
+        path.insert(0, node);
+      }
+      return path;
+    }
+
+    openSet.remove(current);
+
+    // Get neighbors from graph (assume MapGraph has a method getNeighbors)
+    final neighbors = graph.getNeighbors(current);
+    for (final neighbor in neighbors) {
+      final tentativeGScore =
+          (gScore[current] ?? double.infinity) +
+          sqrt(
+            pow(current[0] - neighbor[0], 2) + pow(current[1] - neighbor[1], 2),
+          );
+      if (tentativeGScore < (gScore[neighbor] ?? double.infinity)) {
+        cameFrom[neighbor] = current;
+        gScore[neighbor] = tentativeGScore;
+        fScore[neighbor] =
+            tentativeGScore +
+            sqrt(pow(neighbor[0] - end[0], 2) + pow(neighbor[1] - end[1], 2));
+        if (!openSet.any((p) => p[0] == neighbor[0] && p[1] == neighbor[1])) {
+          openSet.add(neighbor);
+        }
+      }
+    }
+  }
+
+  // No path found
   return [];
 }
 
 class MapGraph {
+  // Internal representation of the graph as adjacency list
+  final Map<List<double>, List<List<double>>> _adjacency = {};
+
   // Implement graph structure and methods
-  void addLink(List<double> a, List<double> b, double weight) {}
-  void removeNode(List<double> node) {}
+  void addLink(List<double> a, List<double> b, double weight) {
+    _adjacency.putIfAbsent(a, () => []).add(b);
+    _adjacency.putIfAbsent(b, () => []).add(a);
+  }
+
+  void removeNode(List<double> node) {
+    _adjacency.remove(node);
+    for (final neighbors in _adjacency.values) {
+      neighbors.removeWhere((n) => n[0] == node[0] && n[1] == node[1]);
+    }
+  }
+
+  List<List<double>> getNeighbors(List<double> node) {
+    return _adjacency[node] ?? [];
+  }
 }
 
 class MapPainter extends CustomPainter {
@@ -172,10 +329,10 @@ class MapPainter extends CustomPainter {
       final textPainter = TextPainter(
         text: TextSpan(
           text: p == startPoint[0]
-              ? "😀"
+              ? '😀'
               : p == endPoint[0]
-              ? "😈"
-              : ["💀", "💰", "❓"][Random().nextInt(3)],
+              ? '😈'
+              : ['💀', '💰', '❓'][Random().nextInt(3)],
           style: TextStyle(fontSize: 16),
         ),
         textAlign: TextAlign.center,
