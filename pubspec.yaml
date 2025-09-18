@@ -1,0 +1,73 @@
+name: hanahaki_tools
+description: "A new Flutter project."
+publish_to: "none"
+version: 1.0.0+1
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  animations: ^2.0.11
+  auto_route: ^10.1.2
+  csv: ^6.0.0
+  cupertino_icons: ^1.0.8
+  equatable: ^2.0.7
+  flutter:
+    sdk: flutter
+  flutter_bloc: ^9.1.1
+  flutter_gen_runner: ^5.11.0
+  flutter_html: ^3.0.0
+  flutter_svg: ^2.2.0
+  font_awesome_flutter: ^10.10.0
+  get_it: ^8.0.3
+  http: ^1.5.0
+  path: ^1.9.1
+  provider: ^6.1.5
+  shared_preferences: ^2.5.3
+
+dev_dependencies:
+  auto_route_generator: ^10.2.4
+  build_runner: ^2.7.0
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  import_sorter: ^4.6.0
+  json_serializable: ^6.9.5
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/fonts/
+
+  fonts:
+    - family: GeneralSans
+      fonts:
+        - asset: assets/fonts/GeneralSans-Extralight.otf
+          weight: 200
+        - asset: assets/fonts/GeneralSans-ExtralightItalic.otf
+          weight: 200
+          style: italic
+        - asset: assets/fonts/GeneralSans-Light.otf
+          weight: 300
+        - asset: assets/fonts/GeneralSans-LightItalic.otf
+          weight: 300
+        - asset: assets/fonts/GeneralSans-Regular.otf
+          style: normal
+        - asset: assets/fonts/GeneralSans-Italic.otf
+          style: italic
+        - asset: assets/fonts/GeneralSans-Medium.otf
+          weight: 500
+        - asset: assets/fonts/GeneralSans-MediumItalic.otf
+          weight: 500
+          style: italic
+        - asset: assets/fonts/GeneralSans-Semibold.otf
+          weight: 600
+        - asset: assets/fonts/GeneralSans-SemiboldItalic.otf
+          weight: 600
+          style: italic
+        - asset: assets/fonts/GeneralSans-Bold.otf
+          weight: 700
+        - asset: assets/fonts/GeneralSans-BoldItalic.otf
+          weight: 700
+          style: italic

@@ -1,0 +1,34 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    sort_pub_dependencies: true
+    avoid_print: false
+    prefer_single_quotes: true
+    prefer_const_constructors_in_immutables: false
+    prefer_const_constructors: false
+    prefer_const_literals_to_create_immutables: false
+    prefer_final_fields: false
+    unnecessary_breaks: true
+    use_key_in_widget_constructors: false
+    use_super_parameters: true
+    always_declare_return_types: true
+    avoid_annotating_with_dynamic: true
+    strict_top_level_inference: false
+
+analyzer:
+  exclude: ["**.freezed.dart", "**.g.dart"]
+  plugins:
+    - import_sorter
+
+  errors:
+    invalid_annotation_target: ignore
+
+import_sorter:
+  comments: false
+  custom_group_order:
+    - dart
+    - package
+    - other
+    - user
+  user_pattern: "^package:hanahaki_tools/"
