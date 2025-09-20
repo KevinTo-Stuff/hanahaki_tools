@@ -11,7 +11,6 @@ import 'package:hanahaki_tools/src/core/theme/dimens.dart';
 import 'package:hanahaki_tools/src/shared/extensions/context_extensions.dart';
 import 'package:hanahaki_tools/src/shared/widgets/buttons/button.dart';
 import 'package:hanahaki_tools/src/shared/widgets/buttons/square_button.dart';
-import 'package:hanahaki_tools/src/shared/widgets/map/map.dart';
 
 @RoutePage()
 class HomeScreen extends StatelessWidget {

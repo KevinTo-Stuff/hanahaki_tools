@@ -26,6 +26,9 @@ class _ToolsScreenState extends State<ToolsScreen> {
   // Damage calc state
   late Character attacker;
   late Character defender;
+  // Collapse state for attacker/defender panels
+  bool attackerCollapsed = false;
+  bool defenderCollapsed = false;
   List<Character>? sampleCharacters;
   Character? selectedAttackerSample;
   Character? selectedDefenderSample;
@@ -34,6 +37,9 @@ class _ToolsScreenState extends State<ToolsScreen> {
   bool isCritical = false;
   bool trueUseMagic = false;
   int? calculated;
+  // Keep a compact history of recent damage results so more can be seen on screen
+  final List<DamageEntry> damageHistory = [];
+  int _turnCounter = 1;
 
   Character _defaultCharacter(String namePrefix) => Character(
     name: namePrefix,
@@ -110,7 +116,26 @@ class _ToolsScreenState extends State<ToolsScreen> {
         );
         break;
     }
-    setState(() => calculated = result);
+    setState(() {
+      calculated = result;
+      // Append to compact history (most recent first)
+      damageHistory.insert(
+        0,
+        DamageEntry(
+          attackerName: attacker.name,
+          defenderName: defender.name,
+          amount: result,
+          time: DateTime.now(),
+          type: damageType,
+          isCritical: isCritical,
+          turn: _turnCounter,
+        ),
+      );
+      _turnCounter += 1;
+      // keep history reasonably sized
+      if (damageHistory.length > 40)
+        damageHistory.removeRange(40, damageHistory.length);
+    });
   }
 
   Widget _buildCharacterSelector({
@@ -119,6 +144,12 @@ class _ToolsScreenState extends State<ToolsScreen> {
     Character? selectedSample,
     required ValueChanged<Character?> onSampleChanged,
     required ValueChanged<Character> onCustomChanged,
+    // current character instance (used when collapsed to show name)
+    required Character currentCharacter,
+    // whether this selector is collapsed
+    required bool collapsed,
+    // toggle collapse state
+    required VoidCallback onToggleCollapsed,
     Color? accent,
     IconData? icon,
   }) {
@@ -148,53 +179,92 @@ class _ToolsScreenState extends State<ToolsScreen> {
               children: [
                 if (icon != null) Icon(icon, color: borderColor),
                 if (icon != null) SizedBox(width: 8),
-                Text(
-                  title,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleMedium!.copyWith(color: borderColor),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleMedium!.copyWith(color: borderColor),
+                  ),
+                ),
+                // collapse/expand toggle
+                IconButton(
+                  icon: Icon(collapsed ? Icons.expand_more : Icons.expand_less),
+                  color: borderColor,
+                  tooltip: collapsed ? 'Expand' : 'Collapse',
+                  onPressed: onToggleCollapsed,
                 ),
               ],
             ),
             SizedBox(height: 8),
-            DropdownButton<Character?>(
-              isExpanded: true,
-              value: selectedSample,
-              items: options,
-              onChanged: (v) => onSampleChanged(v),
-            ),
-            SizedBox(height: 8),
-            // Show the editor when Custom is selected
-            if (isCustom)
-              _CharacterInput(title: title, onChanged: onCustomChanged)
-            else
-              Container(
-                padding: const EdgeInsets.all(8.0),
-                decoration: BoxDecoration(
-                  color: borderColor.withOpacity(0.04),
-                  borderRadius: BorderRadius.circular(6),
+            // When collapsed, only show the selected character name in a compact row
+            if (collapsed)
+              GestureDetector(
+                onTap: onToggleCollapsed,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: borderColor.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          currentCharacter.name,
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Icon(Icons.chevron_right, size: 18, color: borderColor),
+                    ],
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Selected: ${selectedSample.name}',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    SizedBox(height: 8),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      children: [
-                        Chip(label: Text('Lvl ${selectedSample.level}')),
-                        Chip(label: Text('STR ${selectedSample.strength}')),
-                        Chip(label: Text('MAG ${selectedSample.magic}')),
-                        Chip(label: Text('END ${selectedSample.endurance}')),
-                      ],
-                    ),
-                  ],
-                ),
+              )
+            else ...[
+              DropdownButton<Character?>(
+                isExpanded: true,
+                value: selectedSample,
+                items: options,
+                onChanged: (v) => onSampleChanged(v),
               ),
+              SizedBox(height: 8),
+              // Show the editor when Custom is selected
+              if (isCustom)
+                _CharacterInput(title: title, onChanged: onCustomChanged)
+              else
+                Container(
+                  padding: const EdgeInsets.all(8.0),
+                  decoration: BoxDecoration(
+                    color: borderColor.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Selected: ${selectedSample.name}',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      SizedBox(height: 8),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        children: [
+                          Chip(label: Text('Lvl ${selectedSample.level}')),
+                          Chip(label: Text('STR ${selectedSample.strength}')),
+                          Chip(label: Text('MAG ${selectedSample.magic}')),
+                          Chip(label: Text('END ${selectedSample.endurance}')),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ],
         ),
       ),
@@ -253,6 +323,10 @@ class _ToolsScreenState extends State<ToolsScreen> {
                     });
                   },
                   onCustomChanged: (c) => setState(() => attacker = c),
+                  currentCharacter: attacker,
+                  collapsed: attackerCollapsed,
+                  onToggleCollapsed: () =>
+                      setState(() => attackerCollapsed = !attackerCollapsed),
                   accent: Colors.redAccent,
                   icon: FontAwesomeIcons.crosshairs,
                 ),
@@ -276,6 +350,10 @@ class _ToolsScreenState extends State<ToolsScreen> {
                     });
                   },
                   onCustomChanged: (c) => setState(() => defender = c),
+                  currentCharacter: defender,
+                  collapsed: defenderCollapsed,
+                  onToggleCollapsed: () =>
+                      setState(() => defenderCollapsed = !defenderCollapsed),
                   accent: Colors.blueAccent,
                   icon: FontAwesomeIcons.shieldAlt,
                 ),
@@ -295,17 +373,84 @@ class _ToolsScreenState extends State<ToolsScreen> {
                   child: Text('Calculate Damage'),
                 ),
                 SizedBox(height: 16),
-                if (calculated != null) ...[
-                  Text(
-                    'Result',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    '${calculated!} HP',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                ],
+                // Compact damage history: shows more entries on-screen with smaller, denser layout
+                Text(
+                  'Damage History',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: 220),
+                  child: damageHistory.isEmpty
+                      ? Text('No recent calculations')
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          physics: ClampingScrollPhysics(),
+                          itemCount: damageHistory.length,
+                          separatorBuilder: (_, __) => Divider(height: 6),
+                          itemBuilder: (context, idx) {
+                            final e = damageHistory[idx];
+                            // compact time string
+                            final t = e.time;
+                            final timeStr =
+                                '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
+                            return Row(
+                              children: [
+                                // turn and small icon
+                                Text(
+                                  '#${e.turn}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                SizedBox(width: 6),
+                                Icon(
+                                  e.type == DamageType.physical
+                                      ? Icons.share_outlined
+                                      : e.type == DamageType.magical
+                                      ? Icons.auto_fix_high
+                                      : e.type == DamageType.hybrid
+                                      ? Icons.flash_on
+                                      : Icons.remove_red_eye,
+                                  size: 14,
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${e.attackerName} → ${e.defenderName}: ${e.amount} HP',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      timeStr,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      e.isCritical ? 'CRIT' : '',
+                                      style: TextStyle(
+                                        color: e.isCritical ? Colors.red : null,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                ),
               ],
             ),
           ),
@@ -603,4 +748,25 @@ class _DamageOptions extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Compact damage history entry used by the ToolsScreen damage calculator UX.
+class DamageEntry {
+  final String attackerName;
+  final String defenderName;
+  final int amount;
+  final DateTime time;
+  final int turn;
+  final DamageType type;
+  final bool isCritical;
+
+  DamageEntry({
+    required this.attackerName,
+    required this.defenderName,
+    required this.amount,
+    required this.time,
+    required this.turn,
+    required this.type,
+    required this.isCritical,
+  });
 }
