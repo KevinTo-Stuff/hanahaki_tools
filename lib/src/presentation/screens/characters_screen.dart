@@ -193,32 +193,104 @@ class _CharactersScreenState extends State<CharactersScreen> {
       appBar: AppBar(
         title: const Text('Characters'),
         actions: [
-          PopupMenuButton<SortOption>(
-            onSelected: (opt) {
+          // Small label showing the current sort, e.g. "Name ↑".
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Center(
+              child: Text(
+                '${_sortOption.field == SortField.name ? 'Name' : 'Level'} ${_sortOption.direction == SortDirection.asc ? '↑' : '↓'}',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.white),
+              ),
+            ),
+          ),
+          PopupMenuButton<SortField>(
+            onSelected: (field) {
               setState(() {
-                _sortOption = opt;
+                // If the same field is selected again, toggle direction.
+                if (_sortOption.field == field) {
+                  final newDir = _sortOption.direction == SortDirection.asc
+                      ? SortDirection.desc
+                      : SortDirection.asc;
+                  _sortOption = SortOption(field: field, direction: newDir);
+                } else {
+                  // New field selected: default to ascending.
+                  _sortOption = SortOption(
+                    field: field,
+                    direction: SortDirection.asc,
+                  );
+                }
                 _applySort();
               });
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: SortOption.nameAsc,
-                child: Text('Name ↑'),
+              PopupMenuItem(
+                value: SortField.name,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Name'),
+                    if (_sortOption.field == SortField.name)
+                      Icon(
+                        _sortOption.direction == SortDirection.asc
+                            ? Icons.arrow_upward
+                            : Icons.arrow_downward,
+                      ),
+                  ],
+                ),
               ),
-              const PopupMenuItem(
-                value: SortOption.nameDesc,
-                child: Text('Name ↓'),
-              ),
-              const PopupMenuItem(
-                value: SortOption.levelAsc,
-                child: Text('Level ↑'),
-              ),
-              const PopupMenuItem(
-                value: SortOption.levelDesc,
-                child: Text('Level ↓'),
+              PopupMenuItem(
+                value: SortField.level,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Level'),
+                    if (_sortOption.field == SortField.level)
+                      Icon(
+                        _sortOption.direction == SortDirection.asc
+                            ? Icons.arrow_upward
+                            : Icons.arrow_downward,
+                      ),
+                  ],
+                ),
               ),
             ],
-            icon: const Icon(Icons.sort),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.sort),
+                // Badge showing N (name) or L (level) for active field
+                if (_sortOption.field == SortField.name ||
+                    _sortOption.field == SortField.level)
+                  Positioned(
+                    right: -6,
+                    top: -6,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.0),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Center(
+                        child: Text(
+                          _sortOption.field == SortField.name ? 'N' : 'L',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             tooltip: 'Sort',
           ),
         ],
@@ -247,8 +319,8 @@ class _CharactersScreenState extends State<CharactersScreen> {
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddCharacterSheet,
-        child: const Icon(Icons.add),
         tooltip: 'Add Character',
+        child: const Icon(Icons.add),
       ),
     );
   }
