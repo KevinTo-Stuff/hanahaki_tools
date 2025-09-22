@@ -4,14 +4,19 @@ import 'package:flutter/material.dart';
 // Package imports:
 import 'package:auto_route/auto_route.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'dart:convert';
+import 'dart:math';
+
+// Package imports:
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Project imports:
 import 'package:hanahaki_tools/src/core/theme/dimens.dart';
+import 'package:hanahaki_tools/src/presentation/widgets/map_generator_and_display.dart';
 import 'package:hanahaki_tools/src/shared/widgets/buttons/square_button.dart';
 import 'package:hanahaki_tools/src/shared/widgets/dice/dice.dart';
 import 'package:hanahaki_tools/src/shared/models/character.dart';
-import 'package:hanahaki_tools/src/shared/helpers/damage_calculations.dart'
-    as dmg;
+import 'package:hanahaki_tools/src/presentation/widgets/damage_calculator.dart';
 
 @RoutePage()
 class ToolsScreen extends StatefulWidget {
@@ -37,25 +42,44 @@ class _ToolsScreenState extends State<ToolsScreen> {
   bool isCritical = false;
   bool trueUseMagic = false;
   int? calculated;
-  // Keep a compact history of recent damage results so more can be seen on screen
+
   final List<DamageEntry> damageHistory = [];
   int _turnCounter = 1;
 
-  Character _defaultCharacter(String namePrefix) => Character(
-    name: namePrefix,
-    nickname: '${namePrefix[0]}01',
-    kindness: 0,
-    proficiency: 0,
-    charisma: 0,
-    knowledge: 0,
-    guts: 0,
-    health: 50,
-    strength: 5,
-    magic: 5,
-    endurance: 5,
-    luck: 0,
-    level: 1,
-  );
+  static const _kDamageHistoryKey = 'damage_history_v1';
+
+  Future<void> _loadDamageHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString(_kDamageHistoryKey);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final list = jsonDecode(jsonStr) as List<dynamic>;
+        damageHistory.clear();
+        for (var item in list) {
+          try {
+            final e = DamageEntry.fromJson(Map<String, dynamic>.from(item));
+            damageHistory.add(e);
+            _turnCounter = max(_turnCounter, e.turn + 1);
+          } catch (_) {
+            // ignore malformed entry
+          }
+        }
+        setState(() {});
+      }
+    } catch (e) {
+      // ignore load errors
+    }
+  }
+
+  Future<void> _saveDamageHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = damageHistory.map((e) => e.toJson()).toList();
+      await prefs.setString(_kDamageHistoryKey, jsonEncode(list));
+    } catch (e) {
+      // ignore save errors
+    }
+  }
 
   void _onToolSelected(String tool) {
     setState(() {
@@ -66,221 +90,22 @@ class _ToolsScreenState extends State<ToolsScreen> {
   @override
   void initState() {
     super.initState();
+    // Load persisted damage history
+    _loadDamageHistory();
     // generate sample characters by default
     sampleCharacters = Character.generate(count: 6);
     attacker = sampleCharacters!.isNotEmpty
         ? sampleCharacters!.first
-        : _defaultCharacter('Attacker');
+        : defaultCharacter('Attacker');
     defender = sampleCharacters!.length > 1
         ? sampleCharacters![1]
-        : _defaultCharacter('Defender');
+        : defaultCharacter('Defender');
     selectedAttackerSample = sampleCharacters!.isNotEmpty
         ? sampleCharacters!.first
         : null;
     selectedDefenderSample = sampleCharacters!.length > 1
         ? sampleCharacters![1]
         : null;
-  }
-
-  void _calculateDamage() {
-    int result = 0;
-    switch (damageType) {
-      case DamageType.physical:
-        result = dmg.calculatePhysicalDamage(
-          attacker: attacker,
-          defender: defender,
-          isCritical: isCritical,
-        );
-        break;
-      case DamageType.magical:
-        result = dmg.calculateMagicalDamage(
-          attacker: attacker,
-          defender: defender,
-          isCritical: isCritical,
-        );
-        break;
-      case DamageType.hybrid:
-        result = dmg.calculateHybridDamage(
-          attacker: attacker,
-          defender: defender,
-          physicalRatio: physicalRatio,
-          isCritical: isCritical,
-        );
-        break;
-      case DamageType.trueDamage:
-        result = dmg.calculateTrueDamage(
-          attacker: attacker,
-          defender: defender,
-          useMagic: trueUseMagic,
-          isCritical: isCritical,
-        );
-        break;
-    }
-    setState(() {
-      calculated = result;
-      // Append to compact history (most recent first)
-      damageHistory.insert(
-        0,
-        DamageEntry(
-          attackerName: attacker.name,
-          defenderName: defender.name,
-          amount: result,
-          time: DateTime.now(),
-          type: damageType,
-          isCritical: isCritical,
-          turn: _turnCounter,
-        ),
-      );
-      _turnCounter += 1;
-      // keep history reasonably sized
-      if (damageHistory.length > 40)
-        damageHistory.removeRange(40, damageHistory.length);
-    });
-  }
-
-  Widget _buildCharacterSelector({
-    required String title,
-    List<Character>? samples,
-    Character? selectedSample,
-    required ValueChanged<Character?> onSampleChanged,
-    required ValueChanged<Character> onCustomChanged,
-    // current character instance (used when collapsed to show name)
-    required Character currentCharacter,
-    // whether this selector is collapsed
-    required bool collapsed,
-    // toggle collapse state
-    required VoidCallback onToggleCollapsed,
-    Color? accent,
-    IconData? icon,
-  }) {
-    final options = <DropdownMenuItem<Character?>>[];
-    if (samples != null) {
-      for (var s in samples) {
-        options.add(DropdownMenuItem(value: s, child: Text(s.name)));
-      }
-    }
-    options.add(DropdownMenuItem(value: null, child: Text('Custom')));
-
-    final isCustom = selectedSample == null;
-
-    final borderColor = accent ?? Theme.of(context).colorScheme.primary;
-
-    return Card(
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: borderColor.withOpacity(0.6), width: 2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                if (icon != null) Icon(icon, color: borderColor),
-                if (icon != null) SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium!.copyWith(color: borderColor),
-                  ),
-                ),
-                // collapse/expand toggle
-                IconButton(
-                  icon: Icon(collapsed ? Icons.expand_more : Icons.expand_less),
-                  color: borderColor,
-                  tooltip: collapsed ? 'Expand' : 'Collapse',
-                  onPressed: onToggleCollapsed,
-                ),
-              ],
-            ),
-            SizedBox(height: 8),
-            // When collapsed, only show the selected character name in a compact row
-            if (collapsed)
-              GestureDetector(
-                onTap: onToggleCollapsed,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: borderColor.withOpacity(0.04),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          currentCharacter.name,
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Icon(Icons.chevron_right, size: 18, color: borderColor),
-                    ],
-                  ),
-                ),
-              )
-            else ...[
-              DropdownButton<Character?>(
-                isExpanded: true,
-                value: selectedSample,
-                items: options,
-                onChanged: (v) => onSampleChanged(v),
-              ),
-              SizedBox(height: 8),
-              // Show the editor when Custom is selected
-              if (isCustom)
-                _CharacterInput(title: title, onChanged: onCustomChanged)
-              else
-                Container(
-                  padding: const EdgeInsets.all(8.0),
-                  decoration: BoxDecoration(
-                    color: borderColor.withOpacity(0.04),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Selected: ${selectedSample.name}',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      SizedBox(height: 8),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 8,
-                        children: [
-                          Chip(label: Text('Lvl ${selectedSample.level}')),
-                          Chip(label: Text('STR ${selectedSample.strength}')),
-                          Chip(label: Text('MAG ${selectedSample.magic}')),
-                          Chip(label: Text('END ${selectedSample.endurance}')),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _swapCharacters() {
-    setState(() {
-      final tmpChar = attacker;
-      attacker = defender;
-      defender = tmpChar;
-
-      final tmpSample = selectedAttackerSample;
-      selectedAttackerSample = selectedDefenderSample;
-      selectedDefenderSample = tmpSample;
-    });
   }
 
   Widget _buildToolUX(String tool) {
@@ -301,162 +126,84 @@ class _ToolsScreenState extends State<ToolsScreen> {
           ),
         );
       case 'Damage Calculation':
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Damage Calculator',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                SizedBox(height: 12),
-                _buildCharacterSelector(
-                  title: 'Attacker',
-                  samples: sampleCharacters,
-                  selectedSample: selectedAttackerSample,
-                  onSampleChanged: (c) {
-                    setState(() {
-                      selectedAttackerSample = c;
-                      attacker = c ?? _defaultCharacter('Attacker');
-                    });
-                  },
-                  onCustomChanged: (c) => setState(() => attacker = c),
-                  currentCharacter: attacker,
-                  collapsed: attackerCollapsed,
-                  onToggleCollapsed: () =>
-                      setState(() => attackerCollapsed = !attackerCollapsed),
-                  accent: Colors.redAccent,
-                  icon: FontAwesomeIcons.crosshairs,
-                ),
-                SizedBox(height: 12),
-                Center(
-                  child: IconButton(
-                    icon: Icon(FontAwesomeIcons.exchangeAlt),
-                    tooltip: 'Swap Attacker/Defender',
-                    onPressed: _swapCharacters,
-                  ),
-                ),
-                SizedBox(height: 4),
-                _buildCharacterSelector(
-                  title: 'Defender',
-                  samples: sampleCharacters,
-                  selectedSample: selectedDefenderSample,
-                  onSampleChanged: (c) {
-                    setState(() {
-                      selectedDefenderSample = c;
-                      defender = c ?? _defaultCharacter('Defender');
-                    });
-                  },
-                  onCustomChanged: (c) => setState(() => defender = c),
-                  currentCharacter: defender,
-                  collapsed: defenderCollapsed,
-                  onToggleCollapsed: () =>
-                      setState(() => defenderCollapsed = !defenderCollapsed),
-                  accent: Colors.blueAccent,
-                  icon: FontAwesomeIcons.shieldAlt,
-                ),
-                SizedBox(height: 12),
-                _DamageOptions(
-                  physicalRatio: physicalRatio,
-                  damageType: damageType,
-                  isCritical: isCritical,
-                  onPhysicalRatioChanged: (v) =>
-                      setState(() => physicalRatio = v),
-                  onTypeChanged: (t) => setState(() => damageType = t),
-                  onCriticalChanged: (v) => setState(() => isCritical = v),
-                ),
-                SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _calculateDamage,
-                  child: Text('Calculate Damage'),
-                ),
-                SizedBox(height: 16),
-                // Compact damage history: shows more entries on-screen with smaller, denser layout
-                Text(
-                  'Damage History',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                SizedBox(height: 8),
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: 220),
-                  child: damageHistory.isEmpty
-                      ? Text('No recent calculations')
-                      : ListView.separated(
-                          shrinkWrap: true,
-                          physics: ClampingScrollPhysics(),
-                          itemCount: damageHistory.length,
-                          separatorBuilder: (_, __) => Divider(height: 6),
-                          itemBuilder: (context, idx) {
-                            final e = damageHistory[idx];
-                            // compact time string
-                            final t = e.time;
-                            final timeStr =
-                                '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
-                            return Row(
-                              children: [
-                                // turn and small icon
-                                Text(
-                                  '#${e.turn}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                SizedBox(width: 6),
-                                Icon(
-                                  e.type == DamageType.physical
-                                      ? Icons.share_outlined
-                                      : e.type == DamageType.magical
-                                      ? Icons.auto_fix_high
-                                      : e.type == DamageType.hybrid
-                                      ? Icons.flash_on
-                                      : Icons.remove_red_eye,
-                                  size: 14,
-                                ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    '${e.attackerName} → ${e.defenderName}: ${e.amount} HP',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                SizedBox(width: 8),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      timeStr,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
-                                    ),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      e.isCritical ? 'CRIT' : '',
-                                      style: TextStyle(
-                                        color: e.isCritical ? Colors.red : null,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          ),
+        return DamageCalculator(
+          attacker: attacker,
+          defender: defender,
+          sampleCharacters: sampleCharacters,
+          selectedAttackerSample: selectedAttackerSample,
+          selectedDefenderSample: selectedDefenderSample,
+          attackerCollapsed: attackerCollapsed,
+          defenderCollapsed: defenderCollapsed,
+          physicalRatio: physicalRatio,
+          damageType: damageType,
+          isCritical: isCritical,
+          onPhysicalRatioChanged: (v) => setState(() => physicalRatio = v),
+          onTypeChanged: (t) => setState(() => damageType = t),
+          onCriticalChanged: (v) => setState(() => isCritical = v),
+          onSwap: () {
+            setState(() {
+              final swapped = swapCharacters(
+                attacker: attacker,
+                defender: defender,
+                selectedAttackerSample: selectedAttackerSample,
+                selectedDefenderSample: selectedDefenderSample,
+              );
+              attacker = swapped.attacker;
+              defender = swapped.defender;
+              selectedAttackerSample = swapped.selectedAttackerSample;
+              selectedDefenderSample = swapped.selectedDefenderSample;
+            });
+          },
+          onCalculate: () {
+            final calc = createDamageCalculationResult(
+              damageType: damageType,
+              attacker: attacker,
+              defender: defender,
+              physicalRatio: physicalRatio,
+              isCritical: isCritical,
+              trueUseMagic: trueUseMagic,
+              turn: _turnCounter,
+            );
+            setState(() {
+              calculated = calc.amount;
+              damageHistory.insert(0, calc.entry);
+              _turnCounter += 1;
+              if (damageHistory.length > 40) {
+                damageHistory.removeRange(40, damageHistory.length);
+              }
+            });
+            // Persist the updated history
+            _saveDamageHistory();
+          },
+          onAttackerSampleChanged: (c) {
+            setState(() {
+              selectedAttackerSample = c;
+              attacker = c ?? defaultCharacter('Attacker');
+            });
+          },
+          onDefenderSampleChanged: (c) {
+            setState(() {
+              selectedDefenderSample = c;
+              defender = c ?? defaultCharacter('Defender');
+            });
+          },
+          onAttackerCustomChanged: (c) => setState(() => attacker = c),
+          onDefenderCustomChanged: (c) => setState(() => defender = c),
+          onToggleAttackerCollapsed: () =>
+              setState(() => attackerCollapsed = !attackerCollapsed),
+          onToggleDefenderCollapsed: () =>
+              setState(() => defenderCollapsed = !defenderCollapsed),
+          damageHistory: damageHistory,
+          onClear: () async {
+            setState(() {
+              damageHistory.clear();
+              _turnCounter = 1;
+            });
+            await _saveDamageHistory();
+          },
         );
       case 'Map Generator':
-        return Center(child: Text('Map Generator UX'));
+        return MapGeneratorAndDisplay();
       case 'Ultimate Check':
         return Center(
           child: Column(
@@ -534,7 +281,8 @@ class _ToolsScreenState extends State<ToolsScreen> {
   }
 }
 
-enum DamageType { physical, magical, hybrid, trueDamage }
+// Damage-related types (DamageType, DamageEntry, and options widget)
+// were moved to `damage_calculator.dart`.
 
 class _CharacterInput extends StatefulWidget {
   final String title;
@@ -671,102 +419,4 @@ class _CharacterInputState extends State<_CharacterInput> {
       ),
     );
   }
-}
-
-class _DamageOptions extends StatelessWidget {
-  final double physicalRatio;
-  final DamageType damageType;
-  final bool isCritical;
-  final ValueChanged<double> onPhysicalRatioChanged;
-  final ValueChanged<DamageType> onTypeChanged;
-  final ValueChanged<bool> onCriticalChanged;
-
-  const _DamageOptions({
-    required this.physicalRatio,
-    required this.damageType,
-    required this.isCritical,
-    required this.onPhysicalRatioChanged,
-    required this.onTypeChanged,
-    required this.onCriticalChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Options', style: Theme.of(context).textTheme.titleMedium),
-            SizedBox(height: 8),
-            DropdownButton<DamageType>(
-              value: damageType,
-              isExpanded: true,
-              items: [
-                DropdownMenuItem(
-                  value: DamageType.physical,
-                  child: Text('Physical'),
-                ),
-                DropdownMenuItem(
-                  value: DamageType.magical,
-                  child: Text('Magical'),
-                ),
-                DropdownMenuItem(
-                  value: DamageType.hybrid,
-                  child: Text('Hybrid'),
-                ),
-                DropdownMenuItem(
-                  value: DamageType.trueDamage,
-                  child: Text('True Damage'),
-                ),
-              ],
-              onChanged: (v) => v != null ? onTypeChanged(v) : null,
-            ),
-            if (damageType == DamageType.hybrid) ...[
-              SizedBox(height: 8),
-              Text('Physical ratio: ${physicalRatio.toStringAsFixed(2)}'),
-              Slider(
-                value: physicalRatio,
-                min: 0.0,
-                max: 1.0,
-                onChanged: onPhysicalRatioChanged,
-              ),
-            ],
-            Row(
-              children: [
-                Checkbox(
-                  value: isCritical,
-                  onChanged: (v) => onCriticalChanged(v ?? false),
-                ),
-                SizedBox(width: 8),
-                Text('Critical'),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Compact damage history entry used by the ToolsScreen damage calculator UX.
-class DamageEntry {
-  final String attackerName;
-  final String defenderName;
-  final int amount;
-  final DateTime time;
-  final int turn;
-  final DamageType type;
-  final bool isCritical;
-
-  DamageEntry({
-    required this.attackerName,
-    required this.defenderName,
-    required this.amount,
-    required this.time,
-    required this.turn,
-    required this.type,
-    required this.isCritical,
-  });
 }

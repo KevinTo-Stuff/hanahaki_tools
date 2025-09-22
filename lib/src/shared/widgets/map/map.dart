@@ -272,7 +272,7 @@ class MapGraph {
 }
 
 class MapPainter extends CustomPainter {
-  final double canvasSize;
+  // canvasSize is now determined at paint time from the provided `size`.
   final List<List<double>> points;
   final List<List<List<double>>> triangles;
   final List<List<double>> startPoint;
@@ -280,7 +280,6 @@ class MapPainter extends CustomPainter {
   final MapGraph graph;
 
   MapPainter({
-    required this.canvasSize,
     required this.points,
     required this.triangles,
     required this.startPoint,
@@ -291,6 +290,9 @@ class MapPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint();
+    // Use the runtime size provided by the framework so the map can scale
+    final double canvasSize = min(size.width, size.height);
+
     // Background
     paint.color = Color.fromARGB(255, 40, 50, 60);
     canvas.drawRect(Rect.fromLTWH(0, 0, canvasSize, canvasSize), paint);
@@ -302,7 +304,7 @@ class MapPainter extends CustomPainter {
       ..strokeWidth = 10;
     canvas.drawRect(Rect.fromLTWH(0, 0, canvasSize, canvasSize), paint);
 
-    // Translate for drawing
+    // Translate for drawing and provide a margin relative to canvasSize
     canvas.save();
     canvas.translate(canvasSize * 0.05, canvasSize * 0.05);
 
@@ -402,45 +404,59 @@ class MapPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
 // Usage in a Flutter widget
 class MapWidget extends StatelessWidget {
+  const MapWidget({super.key});
+
   @override
   Widget build(BuildContext context) {
-    // Initialize points, triangles, graph, startPoint, endPoint
-    final points = poissonDiskSampling(Size(450, 450), 40, 60, 30, [
-      [225, 450],
-      [225, 0],
-    ]);
-    final triangles = delaunayTriangles(points);
+    // Use LayoutBuilder so we can size the map to the available space.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double size = min(constraints.maxWidth, constraints.maxHeight);
 
-    final graph = MapGraph();
-    for (final tri in triangles) {
-      for (int i = 0; i < 3; i++) {
-        final a = tri[i];
-        final b = tri[(i + 1) % 3];
-        graph.addLink(a, b, sqrt(pow(a[0] - b[0], 2) + pow(a[1] - b[1], 2)));
-      }
-    }
+        // Initialize points, triangles, graph, startPoint, endPoint using the
+        // dynamic size so generation matches the render size.
+        final points = poissonDiskSampling(Size(size, size), 40, 60, 30, [
+          [size / 2, size],
+          [size / 2, 0],
+        ]);
+        final triangles = delaunayTriangles(points);
 
-    final startPoint = [
-      [225.0, 450.0],
-    ];
-    final endPoint = [
-      [225.0, 0.0],
-    ];
-    return CustomPaint(
-      size: Size(500, 500),
-      painter: MapPainter(
-        canvasSize: 500,
-        points: points, // Fill with Poisson Disk points
-        triangles: triangles, // Fill with Delaunay triangles
-        startPoint: startPoint,
-        endPoint: endPoint,
-        graph: graph,
-      ),
+        final graph = MapGraph();
+        for (final tri in triangles) {
+          for (int i = 0; i < 3; i++) {
+            final a = tri[i];
+            final b = tri[(i + 1) % 3];
+            graph.addLink(
+              a,
+              b,
+              sqrt(pow(a[0] - b[0], 2) + pow(a[1] - b[1], 2)),
+            );
+          }
+        }
+
+        final startPoint = [
+          [size / 2, size],
+        ];
+        final endPoint = [
+          [size / 2, 0.0],
+        ];
+
+        return CustomPaint(
+          size: Size(size, size),
+          painter: MapPainter(
+            points: points, // Fill with Poisson Disk points
+            triangles: triangles, // Fill with Delaunay triangles
+            startPoint: startPoint,
+            endPoint: endPoint,
+            graph: graph,
+          ),
+        );
+      },
     );
   }
 }

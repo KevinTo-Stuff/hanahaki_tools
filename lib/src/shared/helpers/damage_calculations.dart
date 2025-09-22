@@ -150,19 +150,6 @@ int healAmount({required int level, required int magic}) {
   return base + bonus;
 }
 
-/// Calculate a character's max health from `level` and `endurance`.
-/// Returns an integer health value.
-int calculateMaxHealth({required int level, required int endurance}) {
-  // Base health scales with level, endurance gives a flat and percent boost.
-  final base = 30 + (level * 4);
-  final enduranceFlat = endurance * 2;
-  final endurancePercent = 1 + (endurance / 200); // small percent boost
-  return ((base + enduranceFlat) * endurancePercent).round();
-}
-
-/// Convenience overloads accepting Character objects.
-int calculateMaxHealthForCharacter(Character c) =>
-    calculateMaxHealth(level: c.level, endurance: c.endurance);
 int calculatePhysicalDamageCharacters(
   Character attacker,
   Character defender, {
