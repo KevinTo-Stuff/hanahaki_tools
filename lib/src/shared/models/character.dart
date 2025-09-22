@@ -1,5 +1,6 @@
 // Dart imports:
 import 'dart:math';
+import 'package:random_name_generator/random_name_generator.dart';
 
 class Character {
   final String name;
@@ -73,25 +74,16 @@ class Character {
     final rnd = random ?? Random();
     final n = count < 0 ? 0 : (count > 10 ? 10 : count);
 
-    final sampleNames = [
-      'Airi',
-      'Hana',
-      'Sora',
-      'Kaito',
-      'Mika',
-      'Ren',
-      'Yuki',
-      'Akira',
-      'Nao',
-      'Rin',
-    ];
-
     int randStat(int min, int max) => min + rnd.nextInt(max - min + 1);
 
     List<Character> out = [];
     for (var i = 0; i < n; i++) {
-      final name = sampleNames[i % sampleNames.length];
-      final nickname = '${name[0]}${rnd.nextInt(900) + 100}';
+      // Create a RandomNames instance for US-style names and use it to
+      // generate a random first name for each character.
+      final randomNames = RandomNames(Zone.us);
+      final name = randomNames.name();
+      final nickname =
+          '${name.isNotEmpty ? name[0] : 'X'}${rnd.nextInt(900) + 100}';
 
       final level = randStat(1, 99);
       final kindness = randStat(0, 5);

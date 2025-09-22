@@ -24,6 +24,7 @@ dependencies:
   path: ^1.9.1
   provider: ^6.1.5
   shared_preferences: ^2.5.3
+  random_name_generator: ^1.5.0
 
 dev_dependencies:
   auto_route_generator: ^10.2.4
