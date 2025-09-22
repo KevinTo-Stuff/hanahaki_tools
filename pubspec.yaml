@@ -20,6 +20,7 @@ dependencies:
   font_awesome_flutter: ^10.10.0
   get_it: ^8.0.3
   http: ^1.5.0
+  path_provider: ^2.0.15
   path: ^1.9.1
   provider: ^6.1.5
   shared_preferences: ^2.5.3
@@ -37,7 +38,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/images/
     - assets/fonts/
 
   fonts:

@@ -1,462 +1,518 @@
 // Dart imports:
 import 'dart:math';
+import 'dart:typed_data';
+import 'dart:ui';
 
 // Flutter imports:
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
-// Placeholder for Poisson Disk Sampling, Delaunay, and pathfinding
-// You need to implement or use packages for these
-List<List<double>> poissonDiskSampling(
-  Size size,
-  double minDist,
-  double maxDist,
-  int tries,
-  List<List<double>> initialPoints,
-) {
-  final points = <List<double>>[];
-  final rng = Random();
-  final cellSize = minDist / sqrt(2);
-  final gridWidth = (size.width / cellSize).ceil();
-  final gridHeight = (size.height / cellSize).ceil();
-  final grid = List.generate(gridWidth * gridHeight, (_) => -1);
+// A simplified translation of the provided p5.js sketch.
+// - Bridson Poisson disk sampling
+// - Graph built by connecting k nearest neighbors
+// - A* pathfinding on the graph
+// - CustomPainter draws arrows, dotted lines and emoji
 
-  List<int> gridIndex(List<double> p) => [
-    (p[0] / cellSize).floor(),
-    (p[1] / cellSize).floor(),
-  ];
 
-  bool isValid(List<double> p) {
-    if (p[0] < 0 || p[0] >= size.width || p[1] < 0 || p[1] >= size.height) {
-      return false;
+class MapSketchController {
+  VoidCallback? _listener;
+  GlobalKey? _boundaryKey;
+
+  /// Force the attached MapSketch to regenerate procedural data.
+  void regenerate() => _listener?.call();
+
+  /// Internal: used by the widget to attach/detach the controller.
+  void _attach(VoidCallback listener) => _listener = listener;
+  void _detach() => _listener = null;
+
+  /// Internal: widget registers its RepaintBoundary key so controller
+  /// can capture the rendered image.
+  void _registerBoundaryKey(GlobalKey key) => _boundaryKey = key;
+
+  /// Capture the current map as PNG bytes. Returns null on failure.
+  Future<Uint8List?> capturePng() async {
+    try {
+      if (_boundaryKey == null) return null;
+      final boundary =
+          _boundaryKey!.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final image = await boundary.toImage(pixelRatio: 2.0);
+      final byteData = await image.toByteData(format: ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (_) {
+      return null;
     }
-    final gi = gridIndex(p);
-    for (int i = max(gi[0] - 2, 0); i <= min(gi[0] + 2, gridWidth - 1); i++) {
-      for (
-        int j = max(gi[1] - 2, 0);
-        j <= min(gi[1] + 2, gridHeight - 1);
-        j++
-      ) {
-        final idx = i + j * gridWidth;
-        final ptIdx = grid[idx];
-        if (ptIdx != -1) {
-          final pt = points[ptIdx];
-          final dx = pt[0] - p[0];
-          final dy = pt[1] - p[1];
-          if (sqrt(dx * dx + dy * dy) < minDist) return false;
-        }
+  }
+}
+
+class MapSketch extends StatefulWidget {
+  const MapSketch({
+    super.key,
+    this.size = 500,
+    this.controller,
+    this.minDist = 40,
+    this.maxDist = 80,
+    this.tries = 30,
+  });
+
+  final double size;
+  final MapSketchController? controller;
+  final double minDist;
+  final double maxDist;
+  final int tries;
+
+  @override
+  State<MapSketch> createState() => _MapSketchState();
+}
+
+class _MapSketchState extends State<MapSketch> {
+  late double canvasSize;
+  final double noiseScale = 0.02;
+
+  late Point<double> startPoint;
+  late Point<double> endPoint;
+  late Graph graph;
+  late List<Point<double>> points;
+  final Random rng = Random();
+
+  @override
+  void initState() {
+    super.initState();
+    canvasSize = widget.size;
+    _buildProcedural();
+    widget.controller?._attach(() {
+      // rebuild procedural data and repaint
+      setState(() {
+        canvasSize = widget.size;
+        _buildProcedural();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.controller?._detach();
+    super.dispose();
+  }
+
+  void _buildProcedural() {
+    // Poisson Disk Sampling (Bridson)
+    final pds = PoissonDiskSampler(
+      width: canvasSize * 0.9,
+      height: canvasSize * 0.9,
+      minDist: widget.minDist,
+      maxDist: widget.maxDist,
+      tries: widget.tries,
+      rng: rng,
+    );
+
+    startPoint = Point(canvasSize * 0.45, canvasSize * 0.9);
+    endPoint = Point(canvasSize * 0.45, 0);
+    pds.addPoint(startPoint);
+    pds.addPoint(endPoint);
+    points = pds.fill().where((p) {
+      final dx = p.x - canvasSize * 0.45;
+      final dy = p.y - canvasSize * 0.45;
+      return sqrt(dx * dx + dy * dy) <= canvasSize * 0.45;
+    }).toList();
+
+    // Build graph from Delaunay triangulation (Bowyer-Watson)
+    graph = Graph();
+    for (final p in points) {
+      graph.addNode(p);
+    }
+    final triangles = _delaunayTriangles(points);
+    for (final t in triangles) {
+      graph.addLink(t[0], t[1], weight: distance(t[0], t[1]));
+      graph.addLink(t[1], t[2], weight: distance(t[1], t[2]));
+      graph.addLink(t[2], t[0], weight: distance(t[2], t[0]));
+    }
+  }
+
+  double distance(Point a, Point b) {
+    final dx = a.x - b.x;
+    final dy = a.y - b.y;
+    return sqrt(dx * dx + dy * dy);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // If a controller is provided, register a RepaintBoundary key so
+    // the controller can export the widget as an image.
+    final boundaryKey = widget.controller != null ? GlobalKey() : null;
+    widget.controller?._registerBoundaryKey(boundaryKey!);
+
+    final painter = _MapPainter(
+      canvasSize: canvasSize,
+      start: startPoint,
+      end: endPoint,
+      graph: graph,
+      rng: rng,
+    );
+
+    final content = SizedBox(
+      width: canvasSize,
+      height: canvasSize,
+      child: CustomPaint(painter: painter),
+    );
+
+    if (boundaryKey != null) {
+      return RepaintBoundary(key: boundaryKey, child: content);
+    }
+    return content;
+  }
+}
+
+class _MapPainter extends CustomPainter {
+  _MapPainter({
+    required this.canvasSize,
+    required this.start,
+    required this.end,
+    required this.graph,
+    required this.rng,
+  });
+
+  final double canvasSize;
+  final Point<double> start;
+  final Point<double> end;
+  final Graph graph;
+  final Random rng;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint bg = Paint()..color = const Color.fromARGB(255, 40, 50, 60);
+    canvas.drawRect(Rect.fromLTWH(0, 0, canvasSize, canvasSize), bg);
+
+    final translateOffset = Offset(canvasSize * 0.05, canvasSize * 0.05);
+    canvas.save();
+    canvas.translate(translateOffset.dx, translateOffset.dy);
+
+    // Active points collection and simple A* iterations
+    final activePoints = <Point<double>>[];
+    for (var iter = 0; iter < (canvasSize / 50).floor(); iter++) {
+      final path = aStar(graph, start, end);
+      if (path.isEmpty) break;
+      activePoints.addAll(path);
+
+      // draw arrows along path
+      for (var i = 1; i < path.length; i++) {
+        _drawArrow(canvas, path[i - 1], path[i]);
+      }
+
+      // remove a random middle node
+      if (path.length > 2) {
+        final idx = 1 + rng.nextInt(path.length - 2);
+        graph.removeNode(path[idx]);
       }
     }
-    return true;
+
+    // Draw points (emoji)
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+    final unique = activePoints.toSet().toList();
+    for (final p in unique) {
+      final text = (p == start)
+          ? '😀'
+          : (p == end)
+          ? '😈'
+          : '💀';
+      textPainter.text = TextSpan(
+        text: text,
+        style: const TextStyle(fontSize: 16),
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(p.x - textPainter.width / 2, p.y - textPainter.height / 2),
+      );
+    }
+
+    canvas.restore();
+
+    // overlay
+    final overlay = Paint()..color = const Color.fromRGBO(40, 50, 60, 0.3);
+    canvas.drawRect(Rect.fromLTWH(0, 0, canvasSize, canvasSize), overlay);
   }
 
-  final processList = <List<double>>[];
+  void _drawArrow(
+    Canvas canvas,
+    Point<double> a,
+    Point<double> b, {
+    double arrowSize = 6,
+  }) {
+    final vec = Offset(b.x - a.x, b.y - a.y);
+    final len = vec.distance;
+    final factor = (len - 10) / len;
+    final endVec = Offset(vec.dx * factor, vec.dy * factor);
 
-  for (final p in initialPoints) {
-    points.add(p);
-    final gi = gridIndex(p);
-    grid[gi[0] + gi[1] * gridWidth] = points.length - 1;
-    processList.add(p);
+    // dotted line from a to a + endVec
+    _dottedLine(
+      canvas,
+      Offset(a.x, a.y),
+      Offset(a.x + endVec.dx, a.y + endVec.dy),
+    );
+
+    // triangle arrowhead
+    canvas.save();
+    canvas.translate(a.x, a.y);
+    final angle = atan2(vec.dy, vec.dx);
+    canvas.rotate(angle);
+    final path = Path()
+      ..moveTo(endVec.distance - arrowSize, arrowSize / 2)
+      ..lineTo(endVec.distance - arrowSize, -arrowSize / 2)
+      ..lineTo(endVec.distance, 0)
+      ..close();
+    final paint = Paint()..color = Colors.white;
+    canvas.drawPath(path, paint);
+    canvas.restore();
   }
 
-  if (points.isEmpty) {
-    final p = [rng.nextDouble() * size.width, rng.nextDouble() * size.height];
-    points.add(p);
-    final gi = gridIndex(p);
-    grid[gi[0] + gi[1] * gridWidth] = 0;
-    processList.add(p);
+  void _dottedLine(Canvas canvas, Offset p1, Offset p2, {double fragment = 5}) {
+    final vec = p2 - p1;
+    final len = vec.distance;
+    final paint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+    var pos = p1;
+    var remaining = len;
+    final direction = vec / len;
+    while (remaining > 0) {
+      final seg = min(fragment, remaining);
+      final next = pos + direction * seg;
+      canvas.drawLine(pos, next, paint);
+      pos = next + direction * seg;
+      remaining = (p2 - pos).distance;
+    }
   }
 
-  while (processList.isNotEmpty) {
-    final idx = rng.nextInt(processList.length);
-    final point = processList[idx];
-    bool found = false;
-    for (int t = 0; t < tries; t++) {
-      final angle = rng.nextDouble() * 2 * pi;
-      final radius = minDist + rng.nextDouble() * (maxDist - minDist);
-      final newPoint = [
-        point[0] + cos(angle) * radius,
-        point[1] + sin(angle) * radius,
-      ];
-      if (isValid(newPoint)) {
-        points.add(newPoint);
-        final gi = gridIndex(newPoint);
-        grid[gi[0] + gi[1] * gridWidth] = points.length - 1;
-        processList.add(newPoint);
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ---------- Helpers: Poisson Disk Sampling ----------
+
+class PoissonDiskSampler {
+  PoissonDiskSampler({
+    required this.width,
+    required this.height,
+    required this.minDist,
+    required this.maxDist,
+    this.tries = 30,
+    Random? rng,
+  }) : rng = rng ?? Random();
+
+  final double width, height;
+  final double minDist, maxDist;
+  final int tries;
+  final Random rng;
+
+  final List<Point<double>> _points = [];
+
+  void addPoint(Point<double> p) => _points.add(p);
+
+  List<Point<double>> fill() {
+    // Very simplified Bridson: start with existing points and attempt to add more
+    final List<Point<double>> active = List.from(_points);
+    while (active.isNotEmpty) {
+      final idx = rng.nextInt(active.length);
+      final center = active[idx];
+      var found = false;
+      for (var i = 0; i < tries; i++) {
+        final r = minDist + rng.nextDouble() * (maxDist - minDist);
+        final a = rng.nextDouble() * 2 * pi;
+        final p = Point(center.x + r * cos(a), center.y + r * sin(a));
+        if (p.x < 0 || p.x >= width || p.y < 0 || p.y >= height) continue;
+        if (_points.any(
+          (q) =>
+              (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y) <
+              minDist * minDist,
+        )) {
+          continue;
+        }
+        _points.add(p);
+        active.add(p);
         found = true;
         break;
       }
+      if (!found) active.removeAt(idx);
     }
-    if (!found) {
-      processList.removeAt(idx);
-    }
+    return _points;
   }
-
-  return points;
 }
 
-List<List<List<double>>> delaunayTriangles(List<List<double>> points) {
-  // Basic Bowyer-Watson Delaunay triangulation (brute-force, 2D)
-  if (points.length < 3) return [];
+// ---------- Simple Graph and A* ----------
 
-  // Super triangle covering all points
-  final minX = points.map((p) => p[0]).reduce(min);
-  final minY = points.map((p) => p[1]).reduce(min);
-  final maxX = points.map((p) => p[0]).reduce(max);
-  final maxY = points.map((p) => p[1]).reduce(max);
-  final dx = maxX - minX;
-  final dy = maxY - minY;
-  final deltaMax = max(dx, dy) * 10;
-  final midx = (minX + maxX) / 2;
-  final midy = (minY + maxY) / 2;
+class Graph {
+  final Map<Point<double>, Map<Point<double>, double>> _adj = {};
 
-  final superTriangle = [
-    [midx - deltaMax, midy - deltaMax],
-    [midx, midy + deltaMax],
-    [midx + deltaMax, midy - deltaMax],
-  ];
-
-  List<List<List<double>>> triangles = [
-    [superTriangle[0], superTriangle[1], superTriangle[2]],
-  ];
-
-  bool pointInCircumcircle(List<double> p, List<List<double>> tri) {
-    final ax = tri[0][0], ay = tri[0][1];
-    final bx = tri[1][0], by = tri[1][1];
-    final cx = tri[2][0], cy = tri[2][1];
-    final dx = p[0], dy = p[1];
-
-    final a = ax - dx;
-    final b = ay - dy;
-    final c = (ax - dx) * (ax - dx) + (ay - dy) * (ay - dy);
-
-    final d = bx - dx;
-    final e = by - dy;
-    final f = (bx - dx) * (bx - dx) + (by - dy) * (by - dy);
-
-    final g = cx - dx;
-    final h = cy - dy;
-    final i = (cx - dx) * (cx - dx) + (cy - dy) * (cy - dy);
-
-    final det =
-        (a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g));
-    return det > 0;
+  void addNode(Point<double> p) {
+    _adj.putIfAbsent(p, () => {});
   }
 
-  for (final p in points) {
-    final badTriangles = <List<List<double>>>[];
-    for (final tri in triangles) {
-      if (pointInCircumcircle(p, tri)) {
-        badTriangles.add(tri);
-      }
-    }
+  void addLink(Point<double> a, Point<double> b, {required double weight}) {
+    addNode(a);
+    addNode(b);
+    _adj[a]![b] = weight;
+    _adj[b]![a] = weight;
+  }
 
-    final edgeSet = <List<List<double>>>[];
-    for (final tri in badTriangles) {
-      for (int i = 0; i < 3; i++) {
-        final edge = [tri[i], tri[(i + 1) % 3]];
-        bool shared = false;
-        for (final otherTri in badTriangles) {
-          if (identical(tri, otherTri)) continue;
-          for (int j = 0; j < 3; j++) {
-            final otherEdge = [otherTri[j], otherTri[(j + 1) % 3]];
-            if ((edge[0] == otherEdge[1] && edge[1] == otherEdge[0]) ||
-                (edge[0] == otherEdge[0] && edge[1] == otherEdge[1])) {
-              shared = true;
-              break;
-            }
-          }
-          if (shared) break;
-        }
-        if (!shared) edgeSet.add(edge);
-      }
-    }
-
-    triangles.removeWhere((tri) => badTriangles.contains(tri));
-    for (final edge in edgeSet) {
-      triangles.add([edge[0], edge[1], p]);
+  void removeNode(Point<double> p) {
+    _adj.remove(p);
+    for (final m in _adj.values) {
+      m.remove(p);
     }
   }
 
-  // Remove triangles using super triangle vertices
-  triangles = triangles.where((tri) {
-    for (final v in superTriangle) {
-      if (tri.contains(v)) return false;
-    }
-    return true;
-  }).toList();
+  List<Point<double>> neighbors(Point<double> p) =>
+      _adj[p]?.keys.toList() ?? [];
 
-  return triangles;
+  double? weight(Point<double> a, Point<double> b) => _adj[a]?[b];
 }
 
-List<List<double>> aStarPath(
-  MapGraph graph,
-  List<double> start,
-  List<double> end,
+List<Point<double>> aStar(
+  Graph graph,
+  Point<double> start,
+  Point<double> goal,
 ) {
-  // Basic A* pathfinding algorithm
-  final openSet = <List<double>>[start];
-  final cameFrom = <List<double>, List<double>>{};
-  final gScore = <List<double>, double>{};
-  final fScore = <List<double>, double>{};
+  final closed = <Point<double>>{};
+  final gScore = <Point<double>, double>{};
+  final fScore = <Point<double>, double>{};
+  final cameFrom = <Point<double>, Point<double>>{};
 
+  double heuristic(Point<double> a, Point<double> b) {
+    final dx = a.x - b.x;
+    final dy = a.y - b.y;
+    return sqrt(dx * dx + dy * dy);
+  }
+
+  final open = <Point<double>>[];
+  open.add(start);
   gScore[start] = 0;
-  fScore[start] = sqrt(pow(start[0] - end[0], 2) + pow(start[1] - end[1], 2));
+  fScore[start] = heuristic(start, goal);
 
-  while (openSet.isNotEmpty) {
-    // Find node in openSet with lowest fScore
-    openSet.sort(
+  while (open.isNotEmpty) {
+    open.sort(
       (a, b) => (fScore[a] ?? double.infinity).compareTo(
         fScore[b] ?? double.infinity,
       ),
     );
-    final current = openSet.first;
-
-    if (current[0] == end[0] && current[1] == end[1]) {
-      // Reconstruct path
-      final path = <List<double>>[current];
-      var node = current;
-      while (cameFrom.containsKey(node)) {
-        node = cameFrom[node]!;
-        path.insert(0, node);
+    final current = open.removeAt(0);
+    if (current == goal) {
+      final path = <Point<double>>[];
+      var cur = current;
+      while (cameFrom.containsKey(cur)) {
+        path.insert(0, cur);
+        cur = cameFrom[cur]!;
       }
+      path.insert(0, start);
       return path;
     }
 
-    openSet.remove(current);
-
-    // Get neighbors from graph (assume MapGraph has a method getNeighbors)
-    final neighbors = graph.getNeighbors(current);
-    for (final neighbor in neighbors) {
-      final tentativeGScore =
+    closed.add(current);
+    for (final neighbor in graph.neighbors(current)) {
+      if (closed.contains(neighbor)) continue;
+      final tentative =
           (gScore[current] ?? double.infinity) +
-          sqrt(
-            pow(current[0] - neighbor[0], 2) + pow(current[1] - neighbor[1], 2),
-          );
-      if (tentativeGScore < (gScore[neighbor] ?? double.infinity)) {
-        cameFrom[neighbor] = current;
-        gScore[neighbor] = tentativeGScore;
-        fScore[neighbor] =
-            tentativeGScore +
-            sqrt(pow(neighbor[0] - end[0], 2) + pow(neighbor[1] - end[1], 2));
-        if (!openSet.any((p) => p[0] == neighbor[0] && p[1] == neighbor[1])) {
-          openSet.add(neighbor);
-        }
-      }
+          (graph.weight(current, neighbor) ?? double.infinity);
+      if (!open.contains(neighbor)) open.add(neighbor);
+      if (tentative >= (gScore[neighbor] ?? double.infinity)) continue;
+      cameFrom[neighbor] = current;
+      gScore[neighbor] = tentative;
+      fScore[neighbor] = tentative + heuristic(neighbor, goal);
     }
   }
 
-  // No path found
   return [];
 }
 
-class MapGraph {
-  // Internal representation of the graph as adjacency list
-  final Map<List<double>, List<List<double>>> _adjacency = {};
+// ---------- Delaunay (Bowyer-Watson) ----------
 
-  // Implement graph structure and methods
-  void addLink(List<double> a, List<double> b, double weight) {
-    _adjacency.putIfAbsent(a, () => []).add(b);
-    _adjacency.putIfAbsent(b, () => []).add(a);
-  }
-
-  void removeNode(List<double> node) {
-    _adjacency.remove(node);
-    for (final neighbors in _adjacency.values) {
-      neighbors.removeWhere((n) => n[0] == node[0] && n[1] == node[1]);
-    }
-  }
-
-  List<List<double>> getNeighbors(List<double> node) {
-    return _adjacency[node] ?? [];
-  }
+class _Tri {
+  _Tri(this.a, this.b, this.c);
+  final Point<double> a, b, c;
 }
 
-class MapPainter extends CustomPainter {
-  // canvasSize is now determined at paint time from the provided `size`.
-  final List<List<double>> points;
-  final List<List<List<double>>> triangles;
-  final List<List<double>> startPoint;
-  final List<List<double>> endPoint;
-  final MapGraph graph;
-
-  MapPainter({
-    required this.points,
-    required this.triangles,
-    required this.startPoint,
-    required this.endPoint,
-    required this.graph,
-  });
-
+class _Edge {
+  _Edge(this.u, this.v);
+  final Point<double> u, v;
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint();
-    // Use the runtime size provided by the framework so the map can scale
-    final double canvasSize = min(size.width, size.height);
-
-    // Background
-    paint.color = Color.fromARGB(255, 40, 50, 60);
-    canvas.drawRect(Rect.fromLTWH(0, 0, canvasSize, canvasSize), paint);
-
-    // Border
-    paint
-      ..color = Color.fromARGB(255, 40, 80, 20)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 10;
-    canvas.drawRect(Rect.fromLTWH(0, 0, canvasSize, canvasSize), paint);
-
-    // Translate for drawing and provide a margin relative to canvasSize
-    canvas.save();
-    canvas.translate(canvasSize * 0.05, canvasSize * 0.05);
-
-    // Pathfinding and drawing arrows
-    List<List<double>> activePoints = [];
-    for (int i = 0; i < canvasSize / 50; i++) {
-      final foundPath = aStarPath(graph, startPoint[0], endPoint[0]);
-      if (foundPath.isEmpty) break;
-      activePoints.addAll(foundPath);
-
-      for (int j = 1; j < foundPath.length; j++) {
-        drawArrow(canvas, foundPath[j], foundPath[j - 1]);
-      }
-
-      // Remove a random node from the path
-      if (foundPath.length > 2) {
-        final idx = Random().nextInt(foundPath.length - 2) + 1;
-        graph.removeNode(foundPath[idx]);
-      }
-    }
-
-    // Draw points
-    for (final p in activePoints.toSet()) {
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: p == startPoint[0]
-              ? '😀'
-              : p == endPoint[0]
-              ? '😈'
-              : ['💀', '💰', '❓'][Random().nextInt(3)],
-          style: TextStyle(fontSize: 16),
-        ),
-        textAlign: TextAlign.center,
-        textDirection: TextDirection.ltr,
-      );
-      textPainter.layout();
-      textPainter.paint(canvas, Offset(p[0], p[1]));
-    }
-
-    canvas.restore();
-
-    // Overlay
-    paint
-      ..color = Color.fromARGB(77, 40, 50, 60)
-      ..style = PaintingStyle.fill;
-    canvas.drawRect(Rect.fromLTWH(0, 0, canvasSize, canvasSize), paint);
-  }
-
-  void drawArrow(
-    Canvas canvas,
-    List<double> from,
-    List<double> to, {
-    double arrowSize = 6,
-  }) {
-    final dx = to[0] - from[0];
-    final dy = to[1] - from[1];
-    final len = sqrt(dx * dx + dy * dy);
-    final angle = atan2(dy, dx);
-
-    canvas.save();
-    canvas.translate(from[0], from[1]);
-    canvas.rotate(angle);
-
-    // Dotted line
-    drawDottedLine(canvas, 0, 0, len - 10, 0);
-
-    // Arrowhead
-    final path = Path();
-    path.moveTo(len - arrowSize, arrowSize / 2);
-    path.lineTo(len - arrowSize, -arrowSize / 2);
-    path.lineTo(len, 0);
-    path.close();
-    final paint = Paint()..color = Colors.black;
-    canvas.drawPath(path, paint);
-
-    canvas.restore();
-  }
-
-  void drawDottedLine(
-    Canvas canvas,
-    double x1,
-    double y1,
-    double x2,
-    double y2, {
-    double fragment = 5,
-  }) {
-    final len = sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
-    final dx = (x2 - x1) / len;
-    final dy = (y2 - y1) / len;
-    for (double i = 0; i < len; i += fragment * 2) {
-      canvas.drawLine(
-        Offset(x1 + dx * i, y1 + dy * i),
-        Offset(x1 + dx * (i + fragment), y1 + dy * (i + fragment)),
-        Paint()..color = Colors.black,
-      );
-    }
-  }
-
+  bool operator ==(Object other) =>
+      other is _Edge &&
+      ((other.u == u && other.v == v) || (other.u == v && other.v == u));
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  int get hashCode => u.hashCode ^ v.hashCode;
 }
 
-// Usage in a Flutter widget
-class MapWidget extends StatelessWidget {
-  const MapWidget({super.key});
+List<List<Point<double>>> _delaunayTriangles(List<Point<double>> pts) {
+  if (pts.length < 3) return [];
+  // Create a super-triangle that encompasses all points
+  final minX = pts.map((p) => p.x).reduce(min);
+  final minY = pts.map((p) => p.y).reduce(min);
+  final maxX = pts.map((p) => p.x).reduce(max);
+  final maxY = pts.map((p) => p.y).reduce(max);
+  final dx = maxX - minX;
+  final dy = maxY - minY;
+  final dmax = max(dx, dy) * 10;
+  final midx = (minX + maxX) / 2;
+  final midy = (minY + maxY) / 2;
 
-  @override
-  Widget build(BuildContext context) {
-    // Use LayoutBuilder so we can size the map to the available space.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final double size = min(constraints.maxWidth, constraints.maxHeight);
+  final p1 = Point(midx - dmax, midy - dmax);
+  final p2 = Point(midx, midy + dmax);
+  final p3 = Point(midx + dmax, midy - dmax);
 
-        // Initialize points, triangles, graph, startPoint, endPoint using the
-        // dynamic size so generation matches the render size.
-        final points = poissonDiskSampling(Size(size, size), 40, 60, 30, [
-          [size / 2, size],
-          [size / 2, 0],
-        ]);
-        final triangles = delaunayTriangles(points);
+  final triangles = <_Tri>[];
+  triangles.add(_Tri(p1, p2, p3));
 
-        final graph = MapGraph();
-        for (final tri in triangles) {
-          for (int i = 0; i < 3; i++) {
-            final a = tri[i];
-            final b = tri[(i + 1) % 3];
-            graph.addLink(
-              a,
-              b,
-              sqrt(pow(a[0] - b[0], 2) + pow(a[1] - b[1], 2)),
-            );
-          }
-        }
-
-        final startPoint = [
-          [size / 2, size],
-        ];
-        final endPoint = [
-          [size / 2, 0.0],
-        ];
-
-        return CustomPaint(
-          size: Size(size, size),
-          painter: MapPainter(
-            points: points, // Fill with Poisson Disk points
-            triangles: triangles, // Fill with Delaunay triangles
-            startPoint: startPoint,
-            endPoint: endPoint,
-            graph: graph,
-          ),
-        );
-      },
-    );
+  bool inCircumcircle(Point<double> p, _Tri t) {
+    // Use a robust-ish test with a small epsilon and orientation check.
+    const eps = 1e-9;
+    final ax = t.a.x - p.x;
+    final ay = t.a.y - p.y;
+    final bx = t.b.x - p.x;
+    final by = t.b.y - p.y;
+    final cx = t.c.x - p.x;
+    final cy = t.c.y - p.y;
+    final det =
+        (ax * ax + ay * ay) * (bx * cy - cx * by) -
+        (bx * bx + by * by) * (ax * cy - cx * ay) +
+        (cx * cx + cy * cy) * (ax * by - bx * ay);
+    return det > eps;
   }
+
+  for (final p in pts) {
+    final bad = <_Tri>[];
+    for (final t in triangles) {
+      if (inCircumcircle(p, t)) bad.add(t);
+    }
+    final polygon = <_Edge>{};
+    for (final t in bad) {
+      polygon.add(_Edge(t.a, t.b));
+      polygon.add(_Edge(t.b, t.c));
+      polygon.add(_Edge(t.c, t.a));
+    }
+    // remove bad triangles
+    triangles.removeWhere((t) => bad.contains(t));
+    // remove duplicate edges
+    final edgeCount = <_Edge, int>{};
+    for (final e in polygon) {
+      edgeCount[e] = (edgeCount[e] ?? 0) + 1;
+    }
+    final boundary = edgeCount.entries
+        .where((e) => e.value == 1)
+        .map((e) => e.key);
+    for (final e in boundary) {
+      triangles.add(_Tri(e.u, e.v, p));
+    }
+  }
+
+  // Remove triangles that include super-triangle vertices
+  final result = <List<Point<double>>>[];
+  for (final t in triangles) {
+    if (t.a == p1 || t.a == p2 || t.a == p3) continue;
+    if (t.b == p1 || t.b == p2 || t.b == p3) continue;
+    if (t.c == p1 || t.c == p2 || t.c == p3) continue;
+    result.add([t.a, t.b, t.c]);
+  }
+  return result;
 }
