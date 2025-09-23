@@ -10,9 +10,11 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 class MapPainter extends CustomPainter {
   final double canvasSize;
   final int seed;
+  final MapConfig config;
 
-  MapPainter({required this.canvasSize, required this.seed})
-    : _rnd = Random(seed);
+  MapPainter({required this.canvasSize, required this.seed, MapConfig? config})
+    : _rnd = Random(seed),
+      config = config ?? MapConfig.defaults();
 
   final Random _rnd;
 
@@ -36,7 +38,7 @@ class MapPainter extends CustomPainter {
     canvas.restore();
 
     // Compute points and graph
-    final generator = _MapGenerator(_innerSize, _rnd);
+    final generator = _MapGenerator(_innerSize, _rnd, config);
     final map = generator.generate();
 
     // Translate by padding like the original sketch
@@ -187,11 +189,32 @@ class _GeneratedMap {
 
 enum PointType { regular, elite, merchant, event, safe, unknown }
 
+class MapConfig {
+  final Set<PointType> enabledTypes;
+  final int targetNodes;
+  final int branchingPaths;
+
+  MapConfig({
+    required this.enabledTypes,
+    required this.targetNodes,
+    required this.branchingPaths,
+  });
+
+  factory MapConfig.defaults() => MapConfig(
+    enabledTypes: PointType.values.toSet(),
+    targetNodes: 120,
+    branchingPaths: 3,
+  );
+}
+
 class _MapGenerator {
   final double size;
   final Random rnd;
 
-  _MapGenerator(this.size, this.rnd);
+  _MapGenerator(this.size, this.rnd, [MapConfig? config])
+    : config = config ?? MapConfig.defaults();
+
+  final MapConfig config;
 
   _GeneratedMap generate() {
     // padding handled by painter
@@ -204,7 +227,7 @@ class _MapGenerator {
     points.add(endPoint);
 
     // Simple rejection sampling to approximate Poisson-disc
-    const int target = 120;
+    final int target = config.targetNodes;
     const double minDist = 40.0;
     int attempts = 0;
     while (points.length < target && attempts < 20000) {
@@ -246,7 +269,7 @@ class _MapGenerator {
     final activePoints = <int>[];
     // assign weighted point types (biased toward regular mobs)
     final pointTypes = List<PointType>.filled(points.length, PointType.regular);
-    final weights = {
+    final baseWeights = {
       PointType.regular: 60,
       PointType.elite: 8,
       PointType.merchant: 8,
@@ -254,7 +277,14 @@ class _MapGenerator {
       PointType.safe: 10,
       PointType.unknown: 6,
     };
-    final totalWeight = weights.values.reduce((a, b) => a + b);
+    // Filter weights by enabled types in config
+    final weights = <PointType, int>{};
+    for (final e in config.enabledTypes) {
+      weights[e] = baseWeights[e] ?? 0;
+    }
+    final totalWeight = weights.values.isEmpty
+        ? 1
+        : weights.values.reduce((a, b) => a + b);
     for (int i = 0; i < points.length; i++) {
       // start and end keep default but still assign something
       int r = rnd.nextInt(totalWeight);
@@ -273,7 +303,7 @@ class _MapGenerator {
     final startIdx = 0;
     final endIdx = 1;
 
-    final iterations = max(1, (size / 50).floor());
+    final iterations = min(config.branchingPaths, max(1, (size / 50).floor()));
     for (int it = 0; it < iterations; it++) {
       final path = _aStar(points, adj, startIdx, endIdx, removed);
       if (path.isEmpty) break;
@@ -287,7 +317,9 @@ class _MapGenerator {
           break;
         }
       }
-      if (!hasSafe && path.length > 2) {
+      if (!hasSafe &&
+          path.length > 2 &&
+          config.enabledTypes.contains(PointType.safe)) {
         // pick a random internal node and mark it safe
         final internal = path[1 + rnd.nextInt(path.length - 2)];
         if (internal != startIdx && internal != endIdx) {

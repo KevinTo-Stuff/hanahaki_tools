@@ -17,6 +17,10 @@ class MapDisplay extends StatefulWidget {
 
 class _MapDisplayState extends State<MapDisplay> {
   int _seed = DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
+  // config state
+  final Set<PointType> _enabled = PointType.values.toSet();
+  double _nodes = 120;
+  double _paths = 3;
 
   void _regenerate() {
     setState(() {
@@ -26,9 +30,16 @@ class _MapDisplayState extends State<MapDisplay> {
 
   @override
   Widget build(BuildContext context) {
-    final size = min(500.0, MediaQuery.of(context).size.width);
+    final canvasSize = min(500.0, MediaQuery.of(context).size.width);
     final seedColor =
         Theme.of(context).textTheme.bodyMedium?.color ?? Colors.white70;
+    // final size = min(500.0, MediaQuery.of(context).size.width);
+    final mapConfig = MapConfig(
+      enabledTypes: _enabled,
+      targetNodes: _nodes.toInt(),
+      branchingPaths: _paths.toInt(),
+    );
+
     return Scaffold(
       body: Center(
         child: Column(
@@ -37,11 +48,64 @@ class _MapDisplayState extends State<MapDisplay> {
             GestureDetector(
               onTap: _regenerate,
               child: CustomPaint(
-                size: Size(size, size),
-                painter: MapPainter(canvasSize: size, seed: _seed),
+                size: Size(canvasSize, canvasSize),
+                painter: MapPainter(
+                  canvasSize: canvasSize,
+                  seed: _seed,
+                  config: mapConfig,
+                ),
               ),
             ),
             const SizedBox(height: 12),
+            // Controls: put filter chips on their own row above other options
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final t in PointType.values)
+                      FilterChip(
+                        label: Text(t.toString().split('.').last),
+                        selected: _enabled.contains(t),
+                        onSelected: (v) => setState(
+                          () => v ? _enabled.add(t) : _enabled.remove(t),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: 220,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Nodes: ${_nodes.toInt()}'),
+                        Slider(
+                          min: 40,
+                          max: 240,
+                          divisions: 20,
+                          value: _nodes,
+                          onChanged: (v) => setState(() => _nodes = v),
+                        ),
+                        Text('Paths: ${_paths.toInt()}'),
+                        Slider(
+                          min: 1,
+                          max: 8,
+                          divisions: 7,
+                          value: _paths,
+                          onChanged: (v) => setState(() => _paths = v),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
             Center(
               child: Row(
                 mainAxisSize: MainAxisSize.min,
