@@ -16,6 +16,7 @@ Character make(String name, int level) => Character(
   endurance: 5,
   luck: 1,
   level: level,
+  resistances: {},
 );
 
 void main() {

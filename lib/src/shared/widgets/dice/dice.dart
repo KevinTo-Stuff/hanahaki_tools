@@ -30,13 +30,12 @@ extension DieTypeExtension on DieType {
     }
   }
 
-  String get label => 'd${sides}';
+  String get label => 'd$sides';
 }
 
 class DiceRollerWidget extends StatefulWidget {
   final DieType initialDieType;
-  const DiceRollerWidget({Key? key, this.initialDieType = DieType.d6})
-    : super(key: key);
+  const DiceRollerWidget({super.key, this.initialDieType = DieType.d6});
 
   @override
   State<DiceRollerWidget> createState() => _DiceRollerWidgetState();

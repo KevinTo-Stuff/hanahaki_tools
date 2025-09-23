@@ -1,6 +1,4 @@
 // Dart imports:
-import 'dart:convert';
-import 'dart:math';
 
 // Flutter imports:
 import 'package:flutter/material.dart';
@@ -8,7 +6,6 @@ import 'package:flutter/material.dart';
 // Package imports:
 import 'package:auto_route/auto_route.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 // Project imports:
 import 'package:hanahaki_tools/src/core/theme/dimens.dart';
@@ -28,58 +25,8 @@ class ToolsScreen extends StatefulWidget {
 
 class _ToolsScreenState extends State<ToolsScreen> {
   String? selectedTool;
-  // Damage calc state
-  late Character attacker;
-  late Character defender;
-  // Collapse state for attacker/defender panels
-  bool attackerCollapsed = false;
-  bool defenderCollapsed = false;
-  List<Character>? sampleCharacters;
-  Character? selectedAttackerSample;
-  Character? selectedDefenderSample;
-  DamageType damageType = DamageType.physical;
-  double physicalRatio = 0.6;
-  bool isCritical = false;
-  bool trueUseMagic = false;
-  int? calculated;
-
-  final List<DamageEntry> damageHistory = [];
-  int _turnCounter = 1;
-
-  static const _kDamageHistoryKey = 'damage_history_v1';
-
-  Future<void> _loadDamageHistory() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonStr = prefs.getString(_kDamageHistoryKey);
-      if (jsonStr != null && jsonStr.isNotEmpty) {
-        final list = jsonDecode(jsonStr) as List<dynamic>;
-        damageHistory.clear();
-        for (var item in list) {
-          try {
-            final e = DamageEntry.fromJson(Map<String, dynamic>.from(item));
-            damageHistory.add(e);
-            _turnCounter = max(_turnCounter, e.turn + 1);
-          } catch (_) {
-            // ignore malformed entry
-          }
-        }
-        setState(() {});
-      }
-    } catch (e) {
-      // ignore load errors
-    }
-  }
-
-  Future<void> _saveDamageHistory() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final list = damageHistory.map((e) => e.toJson()).toList();
-      await prefs.setString(_kDamageHistoryKey, jsonEncode(list));
-    } catch (e) {
-      // ignore save errors
-    }
-  }
+  // ToolsScreen no longer manages damage-calculation state; the
+  // `DamageCalculator` widget is self-contained.
 
   void _onToolSelected(String tool) {
     setState(() {
@@ -90,22 +37,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
   @override
   void initState() {
     super.initState();
-    // Load persisted damage history
-    _loadDamageHistory();
-    // generate sample characters by default
-    sampleCharacters = Character.generate(count: 6);
-    attacker = sampleCharacters!.isNotEmpty
-        ? sampleCharacters!.first
-        : defaultCharacter('Attacker');
-    defender = sampleCharacters!.length > 1
-        ? sampleCharacters![1]
-        : defaultCharacter('Defender');
-    selectedAttackerSample = sampleCharacters!.isNotEmpty
-        ? sampleCharacters!.first
-        : null;
-    selectedDefenderSample = sampleCharacters!.length > 1
-        ? sampleCharacters![1]
-        : null;
+    // No setup needed for damage calculator here.
   }
 
   Widget _buildToolUX(String tool) {
@@ -126,84 +58,9 @@ class _ToolsScreenState extends State<ToolsScreen> {
           ),
         );
       case 'Damage Calculation':
-        return DamageCalculator(
-          attacker: attacker,
-          defender: defender,
-          sampleCharacters: sampleCharacters,
-          selectedAttackerSample: selectedAttackerSample,
-          selectedDefenderSample: selectedDefenderSample,
-          attackerCollapsed: attackerCollapsed,
-          defenderCollapsed: defenderCollapsed,
-          physicalRatio: physicalRatio,
-          damageType: damageType,
-          isCritical: isCritical,
-          onPhysicalRatioChanged: (v) => setState(() => physicalRatio = v),
-          onTypeChanged: (t) => setState(() => damageType = t),
-          onCriticalChanged: (v) => setState(() => isCritical = v),
-          onSwap: () {
-            setState(() {
-              final swapped = swapCharacters(
-                attacker: attacker,
-                defender: defender,
-                selectedAttackerSample: selectedAttackerSample,
-                selectedDefenderSample: selectedDefenderSample,
-              );
-              attacker = swapped.attacker;
-              defender = swapped.defender;
-              selectedAttackerSample = swapped.selectedAttackerSample;
-              selectedDefenderSample = swapped.selectedDefenderSample;
-            });
-          },
-          onCalculate: () {
-            final calc = createDamageCalculationResult(
-              damageType: damageType,
-              attacker: attacker,
-              defender: defender,
-              physicalRatio: physicalRatio,
-              isCritical: isCritical,
-              trueUseMagic: trueUseMagic,
-              turn: _turnCounter,
-            );
-            setState(() {
-              calculated = calc.amount;
-              damageHistory.insert(0, calc.entry);
-              _turnCounter += 1;
-              if (damageHistory.length > 40) {
-                damageHistory.removeRange(40, damageHistory.length);
-              }
-            });
-            // Persist the updated history
-            _saveDamageHistory();
-          },
-          onAttackerSampleChanged: (c) {
-            setState(() {
-              selectedAttackerSample = c;
-              attacker = c ?? defaultCharacter('Attacker');
-            });
-          },
-          onDefenderSampleChanged: (c) {
-            setState(() {
-              selectedDefenderSample = c;
-              defender = c ?? defaultCharacter('Defender');
-            });
-          },
-          onAttackerCustomChanged: (c) => setState(() => attacker = c),
-          onDefenderCustomChanged: (c) => setState(() => defender = c),
-          onToggleAttackerCollapsed: () =>
-              setState(() => attackerCollapsed = !attackerCollapsed),
-          onToggleDefenderCollapsed: () =>
-              setState(() => defenderCollapsed = !defenderCollapsed),
-          damageHistory: damageHistory,
-          onClear: () async {
-            setState(() {
-              damageHistory.clear();
-              _turnCounter = 1;
-            });
-            await _saveDamageHistory();
-          },
-        );
+        return DamageCalculator();
       case 'Map Generator':
-        return Center(child: MapDisplay());
+        return MapDisplay();
       case 'Ultimate Check':
         return Center(
           child: Column(
@@ -225,15 +82,14 @@ class _ToolsScreenState extends State<ToolsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (selectedTool != null) {
+    return PopScope<Object?>(
+      canPop: selectedTool == null,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (!didPop && selectedTool != null) {
           setState(() {
             selectedTool = null;
           });
-          return false;
         }
-        return true;
       },
       child: Scaffold(
         appBar: AppBar(title: const Text('Tools')),
@@ -320,6 +176,7 @@ class _CharacterInputState extends State<_CharacterInput> {
       endurance: int.tryParse(_enduranceCtrl.text) ?? 5,
       luck: int.tryParse(_luckCtrl.text) ?? 0,
       level: (int.tryParse(_levelCtrl.text) ?? 1).clamp(1, 99),
+      resistances: {},
     );
     widget.onChanged(c);
   }

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 // Project imports:
 import 'package:hanahaki_tools/src/shared/locator.dart';
 import 'package:hanahaki_tools/src/shared/services/storage/storage.dart';
+import 'package:hanahaki_tools/src/shared/services/characters_service.dart';
 
 class AppInitializer {
   /// Initialize services, plugins, etc. before the app runs.
@@ -13,6 +14,9 @@ class AppInitializer {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
     await locator<Storage>().init();
+
+    // Initialize characters service (loads from storage or assets)
+    await locator<CharactersService>().init();
   }
 
   /// Initialize services, plugins, etc. after the app runs.

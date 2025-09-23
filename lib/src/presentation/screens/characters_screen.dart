@@ -106,7 +106,7 @@ class _CharactersScreenState extends State<CharactersScreen> {
                           magic: 5,
                           endurance: 5,
                           luck: 1,
-                          level: 1,
+                          level: 1, resistances: {},
                         );
                         _addCharacter(c);
                         Navigator.of(context).pop();

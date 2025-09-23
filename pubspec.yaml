@@ -20,11 +20,11 @@ dependencies:
   font_awesome_flutter: ^10.10.0
   get_it: ^8.0.3
   http: ^1.5.0
-  path_provider: ^2.0.15
   path: ^1.9.1
+  path_provider: ^2.0.15
   provider: ^6.1.5
-  shared_preferences: ^2.5.3
   random_name_generator: ^1.5.0
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   auto_route_generator: ^10.2.4
@@ -39,6 +39,8 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/images/
+    - assets/json/
     - assets/fonts/
 
   fonts:

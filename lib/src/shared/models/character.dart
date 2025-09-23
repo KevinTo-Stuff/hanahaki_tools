@@ -2,6 +2,15 @@
 import 'dart:math';
 import 'package:random_name_generator/random_name_generator.dart';
 
+/// Resistance categories for a character.
+enum ResistanceType { physical, fire, lightning, wind, ice, curse, bless }
+
+/// Possible resistance values.
+///
+/// Note: the literal name `Null` is a reserved word in Dart, so the enum
+/// value representing a complete nullification of damage is named `Nullify`.
+enum ResistanceValue { weak, neutral, resist, immune, reflect, drain }
+
 class Character {
   final String name;
   final String nickname;
@@ -16,6 +25,7 @@ class Character {
   final int endurance;
   final int luck;
   final int level; // MIN: 1, MAX: 99
+  final Map<ResistanceType, ResistanceValue> resistances;
 
   Character({
     required this.name,
@@ -31,6 +41,7 @@ class Character {
     required this.endurance,
     required this.luck,
     required this.level,
+    required this.resistances,
   });
 
   Character copyWith({
@@ -47,6 +58,7 @@ class Character {
     int? endurance,
     int? luck,
     int? level,
+    Map<ResistanceType, ResistanceValue>? resistances,
   }) {
     return Character(
       name: name ?? this.name,
@@ -62,6 +74,7 @@ class Character {
       endurance: endurance ?? this.endurance,
       luck: luck ?? this.luck,
       level: level ?? this.level,
+      resistances: resistances ?? this.resistances,
     );
   }
 
@@ -100,6 +113,14 @@ class Character {
       var endurance = 5 + randStat(0, 15) + (level ~/ 8);
       // Luck is a value between 1 and 20 (inclusive).
       final luck = randStat(1, 20);
+
+      // Randomly generate resistances for each resistance type.
+      Map<ResistanceType, ResistanceValue> res = {};
+      for (var rt in ResistanceType.values) {
+        final rv =
+            ResistanceValue.values[rnd.nextInt(ResistanceValue.values.length)];
+        res[rt] = rv;
+      }
 
       // Allocate additional stat points based on level: each level grants 3 points
       // that can be assigned to strength, magic, or endurance. Distribute them
@@ -141,10 +162,90 @@ class Character {
           endurance: endurance,
           luck: luck,
           level: level,
+          resistances: res,
         ),
       );
     }
 
     return out;
+  }
+
+  /// Convert this character to a JSON-serializable map.
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'nickname': nickname,
+    'kindness': kindness,
+    'proficiency': proficiency,
+    'charisma': charisma,
+    'knowledge': knowledge,
+    'guts': guts,
+    'health': health,
+    'strength': strength,
+    'magic': magic,
+    'endurance': endurance,
+    'luck': luck,
+    'level': level,
+    'resistances': resistances.map(
+      (k, v) =>
+          MapEntry(k.toString().split('.').last, v.toString().split('.').last),
+    ),
+  };
+
+  /// Create a Character from a JSON map.
+  factory Character.fromJson(Map<String, dynamic> map) {
+    Map<ResistanceType, ResistanceValue> res = {};
+    final raw = map['resistances'];
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        try {
+          final rt = ResistanceType.values.firstWhere(
+            (e) => e.toString().split('.').last == key,
+          );
+          final rv = ResistanceValue.values.firstWhere(
+            (e) => e.toString().split('.').last == value,
+          );
+          res[rt] = rv;
+        } catch (_) {}
+      });
+    }
+
+    return Character(
+      name: map['name'] as String? ?? 'Unknown',
+      nickname: map['nickname'] as String? ?? 'U01',
+      kindness: (map['kindness'] is int)
+          ? map['kindness'] as int
+          : int.tryParse('${map['kindness']}') ?? 0,
+      proficiency: (map['proficiency'] is int)
+          ? map['proficiency'] as int
+          : int.tryParse('${map['proficiency']}') ?? 0,
+      charisma: (map['charisma'] is int)
+          ? map['charisma'] as int
+          : int.tryParse('${map['charisma']}') ?? 0,
+      knowledge: (map['knowledge'] is int)
+          ? map['knowledge'] as int
+          : int.tryParse('${map['knowledge']}') ?? 0,
+      guts: (map['guts'] is int)
+          ? map['guts'] as int
+          : int.tryParse('${map['guts']}') ?? 0,
+      health: (map['health'] is int)
+          ? map['health'] as int
+          : int.tryParse('${map['health']}') ?? 50,
+      strength: (map['strength'] is int)
+          ? map['strength'] as int
+          : int.tryParse('${map['strength']}') ?? 5,
+      magic: (map['magic'] is int)
+          ? map['magic'] as int
+          : int.tryParse('${map['magic']}') ?? 5,
+      endurance: (map['endurance'] is int)
+          ? map['endurance'] as int
+          : int.tryParse('${map['endurance']}') ?? 5,
+      luck: (map['luck'] is int)
+          ? map['luck'] as int
+          : int.tryParse('${map['luck']}') ?? 0,
+      level: (map['level'] is int)
+          ? map['level'] as int
+          : int.tryParse('${map['level']}') ?? 1,
+      resistances: res,
+    );
   }
 }
