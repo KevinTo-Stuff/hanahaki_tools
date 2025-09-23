@@ -46,7 +46,6 @@ class SettingsScreen extends StatelessWidget {
                 Button.primary(
                   title: 'Save',
                   onPressed: () {
-                    // TODO: Implement save logic if needed
                     context.router.pop();
                   },
                 ),

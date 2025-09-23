@@ -1,5 +1,14 @@
 import 'dart:math';
 
+/// Resistance categories for a character.
+enum ResistanceType { physical, fire, lightning, wind, ice, curse, bless }
+
+/// Possible resistance values.
+///
+/// Note: the literal name `Null` is a reserved word in Dart, so the enum
+/// value representing a complete nullification of damage is named `Nullify`.
+enum ResistanceValue { weak, neutral, resist, immune, reflect, drain }
+
 class Character {
   final String name;
   final String nickname;
@@ -14,6 +23,7 @@ class Character {
   final int endurance;
   final int luck;
   final int level; // MIN: 1, MAX: 99
+  final Map<ResistanceType, ResistanceValue> resistances;
 
   Character({
     required this.name,
@@ -29,6 +39,7 @@ class Character {
     required this.endurance,
     required this.luck,
     required this.level,
+    required this.resistances,
   });
 
   Character copyWith({
@@ -45,6 +56,7 @@ class Character {
     int? endurance,
     int? luck,
     int? level,
+    Map<ResistanceType, ResistanceValue>? resistances,
   }) {
     return Character(
       name: name ?? this.name,
@@ -60,6 +72,7 @@ class Character {
       endurance: endurance ?? this.endurance,
       luck: luck ?? this.luck,
       level: level ?? this.level,
+      resistances: resistances ?? this.resistances,
     );
   }
 
@@ -108,6 +121,14 @@ class Character {
       // Luck is a value between 1 and 20 (inclusive).
       final luck = randStat(1, 20);
 
+      // Randomly generate resistances for each resistance type.
+      Map<ResistanceType, ResistanceValue> res = {};
+      for (var rt in ResistanceType.values) {
+        final rv =
+            ResistanceValue.values[rnd.nextInt(ResistanceValue.values.length)];
+        res[rt] = rv;
+      }
+
       // Allocate additional stat points based on level: each level grants 3 points
       // that can be assigned to strength, magic, or endurance. Distribute them
       // randomly across these three stats.
@@ -148,6 +169,7 @@ class Character {
           endurance: endurance,
           luck: luck,
           level: level,
+          resistances: res,
         ),
       );
     }

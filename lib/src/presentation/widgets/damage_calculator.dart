@@ -26,6 +26,7 @@ Character defaultCharacter(String namePrefix) => Character(
   endurance: 5,
   luck: 0,
   level: 1,
+  resistances: {},
 );
 
 enum DamageType { physical, magical, hybrid, trueDamage }
@@ -169,7 +170,10 @@ class DamageCalculator extends StatelessWidget {
 
       return Card(
         shape: RoundedRectangleBorder(
-          side: BorderSide(color: borderColor.withOpacity(0.04), width: 2),
+          side: BorderSide(
+            color: borderColor.withValues(alpha: 0.04),
+            width: 2,
+          ),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Padding(
@@ -209,7 +213,7 @@ class DamageCalculator extends StatelessWidget {
                       horizontal: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: borderColor.withOpacity(0.04),
+                      color: borderColor.withValues(alpha: 0.04),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
@@ -242,7 +246,7 @@ class DamageCalculator extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8.0),
                     decoration: BoxDecoration(
-                      color: borderColor.withOpacity(0.04),
+                      color: borderColor.withValues(alpha: 0.04),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Column(

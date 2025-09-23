@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 // Project imports:
 import 'package:hanahaki_tools/src/core/theme/dimens.dart';
-import 'package:hanahaki_tools/src/presentation/widgets/map_generator_and_display.dart';
+import 'package:hanahaki_tools/src/presentation/widgets/map_display.dart';
 import 'package:hanahaki_tools/src/shared/widgets/buttons/square_button.dart';
 import 'package:hanahaki_tools/src/shared/widgets/dice/dice.dart';
 import 'package:hanahaki_tools/src/shared/models/character.dart';
@@ -203,7 +203,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
           },
         );
       case 'Map Generator':
-        return MapGeneratorAndDisplay();
+        return MapDisplay();
       case 'Ultimate Check':
         return Center(
           child: Column(
@@ -225,15 +225,14 @@ class _ToolsScreenState extends State<ToolsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (selectedTool != null) {
+    return PopScope<Object?>(
+      canPop: selectedTool == null,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (!didPop && selectedTool != null) {
           setState(() {
             selectedTool = null;
           });
-          return false;
         }
-        return true;
       },
       child: Scaffold(
         appBar: AppBar(title: const Text('Tools')),
@@ -320,6 +319,7 @@ class _CharacterInputState extends State<_CharacterInput> {
       endurance: int.tryParse(_enduranceCtrl.text) ?? 5,
       luck: int.tryParse(_luckCtrl.text) ?? 0,
       level: (int.tryParse(_levelCtrl.text) ?? 1).clamp(1, 99),
+      resistances: {},
     );
     widget.onChanged(c);
   }
