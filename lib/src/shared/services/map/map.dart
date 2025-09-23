@@ -4,6 +4,8 @@ import 'dart:collection';
 
 // Flutter imports:
 import 'package:flutter/material.dart';
+// Package imports:
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class MapPainter extends CustomPainter {
   final double canvasSize;
@@ -49,22 +51,42 @@ class MapPainter extends CustomPainter {
       }
     }
 
-    // Draw points (emojis) — ensure each point only gets one emoji
+    // Draw points using Font Awesome icons — ensure each point only gets one icon
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
     final uniqueIndices = LinkedHashSet<int>.from(map.activePointIndices);
     for (final idx in uniqueIndices) {
       final p = map.points[idx];
-      String emoji = '❓';
-      if ((p - map.startPoint).distance < 0.1) emoji = '😀';
-      if ((p - map.endPoint).distance < 0.1) emoji = '😈';
-      // random filler for others
-      if (emoji == '❓') {
-        final choices = ['💀', '💰', '❓'];
-        emoji = choices[_rnd.nextInt(choices.length)];
+      IconData icon = FontAwesomeIcons.question;
+      if ((p - map.startPoint).distance < 0.1) icon = FontAwesomeIcons.doorOpen;
+      if ((p - map.endPoint).distance < 0.1) {
+        icon = FontAwesomeIcons.flagCheckered;
       }
+      // random filler for others
+      if (icon == FontAwesomeIcons.question) {
+        final choices = [
+          FontAwesomeIcons.skull,
+          FontAwesomeIcons.coins,
+          FontAwesomeIcons.question,
+        ];
+        icon = choices[_rnd.nextInt(choices.length)];
+      }
+
+      // Build the font family string. When the font comes from a package
+      // the family registered in the FontManifest is usually prefixed with
+      // `packages/<packageName>/`, so replicate that to ensure the font is found.
+      String? family = icon.fontFamily;
+      if (icon.fontPackage != null && family != null) {
+        family = 'packages/${icon.fontPackage}/$family';
+      }
+
       textPainter.text = TextSpan(
-        text: emoji,
-        style: const TextStyle(fontSize: 16),
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          fontSize: 16,
+          fontFamily: family,
+          color: Colors.white,
+          package: null,
+        ),
       );
       textPainter.layout();
       textPainter.paint(
