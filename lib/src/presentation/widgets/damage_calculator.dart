@@ -3,9 +3,15 @@ import 'package:flutter/material.dart';
 
 // Package imports:
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+// Dart / other package imports
+import 'dart:convert';
+import 'dart:math' show max;
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Project imports:
 import 'package:hanahaki_tools/src/shared/models/character.dart';
+import 'package:hanahaki_tools/src/shared/locator.dart';
+import 'package:hanahaki_tools/src/shared/services/characters_service.dart';
 
 // Damage calculation helpers
 import 'package:hanahaki_tools/src/shared/helpers/damage_calculations.dart'
@@ -90,59 +96,140 @@ class DamageEntry {
   }
 }
 
-class DamageCalculator extends StatelessWidget {
-  final Character attacker;
-  final Character defender;
-  final List<Character>? sampleCharacters;
-  final Character? selectedAttackerSample;
-  final Character? selectedDefenderSample;
-  final bool attackerCollapsed;
-  final bool defenderCollapsed;
-  final double physicalRatio;
-  final DamageType damageType;
-  final bool isCritical;
-  final ValueChanged<double> onPhysicalRatioChanged;
-  final ValueChanged<DamageType> onTypeChanged;
-  final ValueChanged<bool> onCriticalChanged;
-  final VoidCallback onSwap;
-  final VoidCallback onCalculate;
-  final ValueChanged<Character?> onAttackerSampleChanged;
-  final ValueChanged<Character?> onDefenderSampleChanged;
-  final ValueChanged<Character> onAttackerCustomChanged;
-  final ValueChanged<Character> onDefenderCustomChanged;
-  final VoidCallback onToggleAttackerCollapsed;
-  final VoidCallback onToggleDefenderCollapsed;
-  final List<DamageEntry> damageHistory;
-  final VoidCallback? onClear;
+class DamageCalculator extends StatefulWidget {
   final String title;
 
-  const DamageCalculator({
-    super.key,
-    required this.attacker,
-    required this.defender,
-    required this.sampleCharacters,
-    required this.selectedAttackerSample,
-    required this.selectedDefenderSample,
-    required this.attackerCollapsed,
-    required this.defenderCollapsed,
-    required this.physicalRatio,
-    required this.damageType,
-    required this.isCritical,
-    required this.onPhysicalRatioChanged,
-    required this.onTypeChanged,
-    required this.onCriticalChanged,
-    required this.onSwap,
-    required this.onCalculate,
-    required this.onAttackerSampleChanged,
-    required this.onDefenderSampleChanged,
-    required this.onAttackerCustomChanged,
-    required this.onDefenderCustomChanged,
-    required this.onToggleAttackerCollapsed,
-    required this.onToggleDefenderCollapsed,
-    required this.damageHistory,
-    this.onClear,
-    this.title = 'Damage Calculator',
-  });
+  const DamageCalculator({super.key, this.title = 'Damage Calculator'});
+
+  @override
+  State<DamageCalculator> createState() => _DamageCalculatorState();
+}
+
+class _DamageCalculatorState extends State<DamageCalculator> {
+  List<Character>? sampleCharacters;
+  late Character attacker;
+  late Character defender;
+  Character? selectedAttackerSample;
+  Character? selectedDefenderSample;
+  bool attackerCollapsed = false;
+  bool defenderCollapsed = false;
+  double physicalRatio = 0.6;
+  DamageType damageType = DamageType.physical;
+  bool isCritical = false;
+  bool trueUseMagic = false;
+  int? calculated;
+
+  final List<DamageEntry> damageHistory = [];
+  int _turnCounter = 1;
+
+  static const _kDamageHistoryKey = 'damage_history_v1';
+
+  @override
+  void initState() {
+    super.initState();
+    try {
+      final chars = locator<CharactersService>().getAll();
+      if (chars.isNotEmpty) {
+        sampleCharacters = chars;
+      } else {
+        sampleCharacters = Character.generate(count: 6);
+      }
+    } catch (e) {
+      sampleCharacters = Character.generate(count: 6);
+    }
+
+    attacker = sampleCharacters!.isNotEmpty
+        ? sampleCharacters!.first
+        : defaultCharacter('Attacker');
+    defender = sampleCharacters!.length > 1
+        ? sampleCharacters![1]
+        : defaultCharacter('Defender');
+    selectedAttackerSample = sampleCharacters!.isNotEmpty
+        ? sampleCharacters!.first
+        : null;
+    selectedDefenderSample = sampleCharacters!.length > 1
+        ? sampleCharacters![1]
+        : null;
+
+    _loadDamageHistory();
+  }
+
+  Future<void> _loadDamageHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString(_kDamageHistoryKey);
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final list = jsonDecode(jsonStr) as List<dynamic>;
+        damageHistory.clear();
+        for (var item in list) {
+          try {
+            final e = DamageEntry.fromJson(Map<String, dynamic>.from(item));
+            damageHistory.add(e);
+            _turnCounter = max(_turnCounter, e.turn + 1);
+          } catch (_) {
+            // ignore malformed entry
+          }
+        }
+        setState(() {});
+      }
+    } catch (e) {
+      // ignore load errors
+    }
+  }
+
+  Future<void> _saveDamageHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = damageHistory.map((e) => e.toJson()).toList();
+      await prefs.setString(_kDamageHistoryKey, jsonEncode(list));
+    } catch (e) {
+      // ignore save errors
+    }
+  }
+
+  void _onSwap() {
+    setState(() {
+      final swapped = swapCharacters(
+        attacker: attacker,
+        defender: defender,
+        selectedAttackerSample: selectedAttackerSample,
+        selectedDefenderSample: selectedDefenderSample,
+      );
+      attacker = swapped.attacker;
+      defender = swapped.defender;
+      selectedAttackerSample = swapped.selectedAttackerSample;
+      selectedDefenderSample = swapped.selectedDefenderSample;
+    });
+  }
+
+  void _onCalculate() {
+    final calc = createDamageCalculationResult(
+      damageType: damageType,
+      attacker: attacker,
+      defender: defender,
+      physicalRatio: physicalRatio,
+      isCritical: isCritical,
+      trueUseMagic: trueUseMagic,
+      turn: _turnCounter,
+    );
+    setState(() {
+      calculated = calc.amount;
+      damageHistory.insert(0, calc.entry);
+      _turnCounter += 1;
+      if (damageHistory.length > 40) {
+        damageHistory.removeRange(40, damageHistory.length);
+      }
+    });
+    _saveDamageHistory();
+  }
+
+  void _onClear() async {
+    setState(() {
+      damageHistory.clear();
+      _turnCounter = 1;
+    });
+    await _saveDamageHistory();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -288,17 +375,24 @@ class DamageCalculator extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: Theme.of(context).textTheme.headlineSmall),
+            Text(
+              widget.title,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
             SizedBox(height: 12),
             buildCharacterSelector(
               title: 'Attacker',
               samples: sampleCharacters,
               selectedSample: selectedAttackerSample,
-              onSampleChanged: onAttackerSampleChanged,
-              onCustomChanged: onAttackerCustomChanged,
+              onSampleChanged: (c) => setState(() {
+                selectedAttackerSample = c;
+                attacker = c ?? defaultCharacter('Attacker');
+              }),
+              onCustomChanged: (c) => setState(() => attacker = c),
               currentCharacter: attacker,
               collapsed: attackerCollapsed,
-              onToggleCollapsed: onToggleAttackerCollapsed,
+              onToggleCollapsed: () =>
+                  setState(() => attackerCollapsed = !attackerCollapsed),
               accent: Colors.redAccent,
               icon: FontAwesomeIcons.crosshairs,
             ),
@@ -307,7 +401,7 @@ class DamageCalculator extends StatelessWidget {
               child: IconButton(
                 icon: Icon(FontAwesomeIcons.rightLeft),
                 tooltip: 'Swap Attacker/Defender',
-                onPressed: onSwap,
+                onPressed: _onSwap,
               ),
             ),
             SizedBox(height: 4),
@@ -315,11 +409,15 @@ class DamageCalculator extends StatelessWidget {
               title: 'Defender',
               samples: sampleCharacters,
               selectedSample: selectedDefenderSample,
-              onSampleChanged: onDefenderSampleChanged,
-              onCustomChanged: onDefenderCustomChanged,
+              onSampleChanged: (c) => setState(() {
+                selectedDefenderSample = c;
+                defender = c ?? defaultCharacter('Defender');
+              }),
+              onCustomChanged: (c) => setState(() => defender = c),
               currentCharacter: defender,
               collapsed: defenderCollapsed,
-              onToggleCollapsed: onToggleDefenderCollapsed,
+              onToggleCollapsed: () =>
+                  setState(() => defenderCollapsed = !defenderCollapsed),
               accent: Colors.blueAccent,
               icon: FontAwesomeIcons.shieldHalved,
             ),
@@ -328,13 +426,13 @@ class DamageCalculator extends StatelessWidget {
               physicalRatio: physicalRatio,
               damageType: damageType,
               isCritical: isCritical,
-              onPhysicalRatioChanged: onPhysicalRatioChanged,
-              onTypeChanged: onTypeChanged,
-              onCriticalChanged: onCriticalChanged,
+              onPhysicalRatioChanged: (v) => setState(() => physicalRatio = v),
+              onTypeChanged: (t) => setState(() => damageType = t),
+              onCriticalChanged: (v) => setState(() => isCritical = v),
             ),
             SizedBox(height: 16),
             ElevatedButton(
-              onPressed: onCalculate,
+              onPressed: _onCalculate,
               child: Text('Calculate Damage'),
             ),
             SizedBox(height: 16),
@@ -347,14 +445,7 @@ class DamageCalculator extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                TextButton(
-                  child: Text('Clear'),
-                  onPressed: () {
-                    // Parent should handle clear action by updating damageHistory passed in
-                    // If a handler is provided, call it.
-                    onClear?.call();
-                  },
-                ),
+                TextButton(child: Text('Clear'), onPressed: _onClear),
               ],
             ),
             SizedBox(height: 8),
