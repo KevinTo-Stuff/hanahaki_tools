@@ -1,21 +1,13 @@
 // Dart imports:
-import 'dart:io';
 import 'dart:math';
 
 // Flutter imports:
 import 'package:flutter/material.dart';
 
-// Package imports:
-import 'package:path_provider/path_provider.dart';
-
 // Project imports:
-import '../../shared/widgets/map/map.dart';
+import 'package:hanahaki_tools/src/shared/services/map/map.dart';
+import 'package:hanahaki_tools/src/shared/widgets/buttons/button.dart';
 
-/// A simple full-screen widget that displays the procedural map.
-///
-/// Includes a floating action button to "regenerate" the map by
-/// changing the `Key` passed to the `MapWidget` which forces
-/// the `CustomPaint` to be rebuilt with new procedural data.
 class MapDisplay extends StatefulWidget {
   const MapDisplay({super.key});
 
@@ -24,140 +16,186 @@ class MapDisplay extends StatefulWidget {
 }
 
 class _MapDisplayState extends State<MapDisplay> {
-  // Controller-based regeneration
-  final MapSketchController _controller = MapSketchController();
-
-  // Parameters exposed to the UI
-  double _minDist = 40;
-  double _maxDist = 80;
-  int _tries = 30;
+  int _seed = DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
+  // config state
+  final Set<PointType> _enabled = PointType.values.toSet();
+  double _nodes = 120;
+  double _paths = 3;
 
   void _regenerate() {
-    // Tell the controller to regenerate procedural data
-    _controller.regenerate();
+    setState(() {
+      _seed = Random().nextInt(1 << 31);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final canvasSize = min(500.0, MediaQuery.of(context).size.width);
+    final seedColor =
+        Theme.of(context).textTheme.bodyMedium?.color ?? Colors.white70;
+    // final size = min(500.0, MediaQuery.of(context).size.width);
+    final mapConfig = MapConfig(
+      enabledTypes: _enabled,
+      targetNodes: _nodes.toInt(),
+      branchingPaths: _paths.toInt(),
+    );
+
     return Scaffold(
-      appBar: AppBar(toolbarHeight: 0),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            AspectRatio(
-              aspectRatio: 1,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final dim = min(constraints.maxWidth, 500.0);
-                  return MapSketch(
-                    key: ValueKey('${_minDist}_${_maxDist}_$_tries'),
-                    controller: _controller,
-                    size: dim,
-                    minDist: _minDist,
-                    maxDist: _maxDist,
-                    tries: _tries,
-                  );
-                },
+            GestureDetector(
+              onTap: _regenerate,
+              child: CustomPaint(
+                size: Size(canvasSize, canvasSize),
+                painter: MapPainter(
+                  canvasSize: canvasSize,
+                  seed: _seed,
+                  config: mapConfig,
+                ),
               ),
             ),
             const SizedBox(height: 12),
-            // Controls
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Text('minDist'),
-                      Expanded(
-                        child: Slider(
-                          value: _minDist,
-                          min: 10,
-                          max: 200,
-                          divisions: 19,
-                          label: _minDist.toStringAsFixed(0),
-                          onChanged: (v) => setState(() => _minDist = v),
+            // Controls: put filter chips on their own row above other options
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final t in PointType.values)
+                      FilterChip(
+                        label: Text(t.toString().split('.').last),
+                        selected: _enabled.contains(t),
+                        onSelected: (v) => setState(
+                          () => v ? _enabled.add(t) : _enabled.remove(t),
                         ),
                       ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      const Text('maxDist'),
-                      Expanded(
-                        child: Slider(
-                          value: _maxDist,
-                          min: 10,
-                          max: 400,
-                          divisions: 39,
-                          label: _maxDist.toStringAsFixed(0),
-                          onChanged: (v) => setState(() => _maxDist = v),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: 220,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Nodes: ${_nodes.toInt()}'),
+                        Slider(
+                          min: 40,
+                          max: 240,
+                          divisions: 20,
+                          value: _nodes,
+                          onChanged: (v) => setState(() => _nodes = v),
                         ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      const Text('tries'),
-                      Expanded(
-                        child: Slider(
-                          value: _tries.toDouble(),
+                        Text('Paths: ${_paths.toInt()}'),
+                        Slider(
                           min: 1,
-                          max: 100,
-                          divisions: 99,
-                          label: '$_tries',
-                          onChanged: (v) => setState(() => _tries = v.toInt()),
+                          max: 8,
+                          divisions: 7,
+                          value: _paths,
+                          onChanged: (v) => setState(() => _paths = v),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Seed: ',
+                    style: TextStyle(fontSize: 12, color: seedColor),
+                  ),
+                  const SizedBox(width: 6),
+                  SelectableText(
+                    '$_seed',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: seedColor,
+                      fontFamily: 'monospace',
+                    ),
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
       bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.all(8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            ElevatedButton.icon(
-              onPressed: _regenerate,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Regenerate'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () async {
-                final bytes = await _controller.capturePng();
-                if (bytes == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Failed to capture image')),
-                  );
-                  return;
-                }
-                try {
-                  final dir = await getTemporaryDirectory();
-                  final file = File(
-                    '${dir.path}/map_${DateTime.now().millisecondsSinceEpoch}.png',
-                  );
-                  await file.writeAsBytes(bytes);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Saved to ${file.path}')),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error saving image: $e')),
-                  );
-                }
-              },
-              icon: const Icon(Icons.save),
-              label: const Text('Save'),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 44,
+                  child: Button.outline(
+                    title: 'Refresh',
+                    onPressed: _regenerate,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SizedBox(
+                  height: 44,
+                  child: Button.outline(
+                    title: 'Load from Seed',
+                    onPressed: () => _askForSeed(context),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _askForSeed(BuildContext context) async {
+    final controller = TextEditingController();
+    final result = await showDialog<int?>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Load from Seed'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(hintText: 'Enter numeric seed'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final text = controller.text.trim();
+                final value = int.tryParse(text);
+                Navigator.of(ctx).pop(value);
+              },
+              child: const Text('Load'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null) {
+      setState(() {
+        _seed = result;
+      });
+    }
   }
 }
