@@ -1,5 +1,6 @@
 // Dart imports:
 import 'dart:math';
+import 'dart:collection';
 
 // Flutter imports:
 import 'package:flutter/material.dart';
@@ -48,9 +49,10 @@ class MapPainter extends CustomPainter {
       }
     }
 
-    // Draw points (emojis)
+    // Draw points (emojis) — ensure each point only gets one emoji
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
-    for (final idx in map.activePointIndices) {
+    final uniqueIndices = LinkedHashSet<int>.from(map.activePointIndices);
+    for (final idx in uniqueIndices) {
       final p = map.points[idx];
       String emoji = '❓';
       if ((p - map.startPoint).distance < 0.1) emoji = '😀';
