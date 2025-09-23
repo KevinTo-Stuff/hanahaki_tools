@@ -1,22 +1,22 @@
+// Dart imports:
+import 'dart:convert';
+import 'dart:math';
+
 // Flutter imports:
 import 'package:flutter/material.dart';
 
 // Package imports:
 import 'package:auto_route/auto_route.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'dart:convert';
-import 'dart:math';
-
-// Package imports:
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Project imports:
 import 'package:hanahaki_tools/src/core/theme/dimens.dart';
+import 'package:hanahaki_tools/src/presentation/widgets/damage_calculator.dart';
 import 'package:hanahaki_tools/src/presentation/widgets/map_display.dart';
+import 'package:hanahaki_tools/src/shared/models/character.dart';
 import 'package:hanahaki_tools/src/shared/widgets/buttons/square_button.dart';
 import 'package:hanahaki_tools/src/shared/widgets/dice/dice.dart';
-import 'package:hanahaki_tools/src/shared/models/character.dart';
-import 'package:hanahaki_tools/src/presentation/widgets/damage_calculator.dart';
 
 @RoutePage()
 class ToolsScreen extends StatefulWidget {

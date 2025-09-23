@@ -1,3 +1,4 @@
+// Dart imports:
 import 'dart:math';
 
 /// Resistance categories for a character.

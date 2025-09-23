@@ -1,9 +1,12 @@
 // Flutter imports:
 import 'package:flutter/material.dart';
+
+// Package imports:
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 // Project imports:
 import 'package:hanahaki_tools/src/shared/models/character.dart';
+
 // Damage calculation helpers
 import 'package:hanahaki_tools/src/shared/helpers/damage_calculations.dart'
     as dmg;

@@ -1,5 +1,7 @@
+// Dart imports:
 import 'dart:math';
 
+// Project imports:
 import '../models/character.dart';
 
 /// Damage and health calculation helpers.
