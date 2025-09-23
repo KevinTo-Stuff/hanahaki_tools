@@ -15,6 +15,8 @@ import 'package:hanahaki_tools/src/core/theme/dimens.dart';
 import 'package:hanahaki_tools/src/presentation/widgets/damage_calculator.dart';
 import 'package:hanahaki_tools/src/presentation/widgets/map_display.dart';
 import 'package:hanahaki_tools/src/shared/models/character.dart';
+import 'package:hanahaki_tools/src/shared/locator.dart';
+import 'package:hanahaki_tools/src/shared/services/characters_service.dart';
 import 'package:hanahaki_tools/src/shared/widgets/buttons/square_button.dart';
 import 'package:hanahaki_tools/src/shared/widgets/dice/dice.dart';
 
@@ -92,8 +94,18 @@ class _ToolsScreenState extends State<ToolsScreen> {
     super.initState();
     // Load persisted damage history
     _loadDamageHistory();
-    // generate sample characters by default
-    sampleCharacters = Character.generate(count: 6);
+    // load sample characters from stored data
+    try {
+      final chars = locator<CharactersService>().getAll();
+      if (chars.isNotEmpty) {
+        sampleCharacters = chars;
+      } else {
+        // fallback to generated samples
+        sampleCharacters = Character.generate(count: 6);
+      }
+    } catch (e) {
+      sampleCharacters = Character.generate(count: 6);
+    }
     attacker = sampleCharacters!.isNotEmpty
         ? sampleCharacters!.first
         : defaultCharacter('Attacker');

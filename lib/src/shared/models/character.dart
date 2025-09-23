@@ -177,4 +177,83 @@ class Character {
 
     return out;
   }
+
+  /// Convert this character to a JSON-serializable map.
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'nickname': nickname,
+    'kindness': kindness,
+    'proficiency': proficiency,
+    'charisma': charisma,
+    'knowledge': knowledge,
+    'guts': guts,
+    'health': health,
+    'strength': strength,
+    'magic': magic,
+    'endurance': endurance,
+    'luck': luck,
+    'level': level,
+    'resistances': resistances.map(
+      (k, v) =>
+          MapEntry(k.toString().split('.').last, v.toString().split('.').last),
+    ),
+  };
+
+  /// Create a Character from a JSON map.
+  factory Character.fromJson(Map<String, dynamic> map) {
+    Map<ResistanceType, ResistanceValue> res = {};
+    final raw = map['resistances'];
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        try {
+          final rt = ResistanceType.values.firstWhere(
+            (e) => e.toString().split('.').last == key,
+          );
+          final rv = ResistanceValue.values.firstWhere(
+            (e) => e.toString().split('.').last == value,
+          );
+          res[rt] = rv;
+        } catch (_) {}
+      });
+    }
+
+    return Character(
+      name: map['name'] as String? ?? 'Unknown',
+      nickname: map['nickname'] as String? ?? 'U01',
+      kindness: (map['kindness'] is int)
+          ? map['kindness'] as int
+          : int.tryParse('${map['kindness']}') ?? 0,
+      proficiency: (map['proficiency'] is int)
+          ? map['proficiency'] as int
+          : int.tryParse('${map['proficiency']}') ?? 0,
+      charisma: (map['charisma'] is int)
+          ? map['charisma'] as int
+          : int.tryParse('${map['charisma']}') ?? 0,
+      knowledge: (map['knowledge'] is int)
+          ? map['knowledge'] as int
+          : int.tryParse('${map['knowledge']}') ?? 0,
+      guts: (map['guts'] is int)
+          ? map['guts'] as int
+          : int.tryParse('${map['guts']}') ?? 0,
+      health: (map['health'] is int)
+          ? map['health'] as int
+          : int.tryParse('${map['health']}') ?? 50,
+      strength: (map['strength'] is int)
+          ? map['strength'] as int
+          : int.tryParse('${map['strength']}') ?? 5,
+      magic: (map['magic'] is int)
+          ? map['magic'] as int
+          : int.tryParse('${map['magic']}') ?? 5,
+      endurance: (map['endurance'] is int)
+          ? map['endurance'] as int
+          : int.tryParse('${map['endurance']}') ?? 5,
+      luck: (map['luck'] is int)
+          ? map['luck'] as int
+          : int.tryParse('${map['luck']}') ?? 0,
+      level: (map['level'] is int)
+          ? map['level'] as int
+          : int.tryParse('${map['level']}') ?? 1,
+      resistances: res,
+    );
+  }
 }
