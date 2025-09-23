@@ -57,18 +57,28 @@ class MapPainter extends CustomPainter {
     for (final idx in uniqueIndices) {
       final p = map.points[idx];
       IconData icon = FontAwesomeIcons.question;
-      if ((p - map.startPoint).distance < 0.1) icon = FontAwesomeIcons.doorOpen;
-      if ((p - map.endPoint).distance < 0.1) {
+      // start / end overrides
+      if ((p - map.startPoint).distance < 0.1) {
+        icon = FontAwesomeIcons.doorOpen;
+      } else if ((p - map.endPoint).distance < 0.1) {
         icon = FontAwesomeIcons.flagCheckered;
-      }
-      // random filler for others
-      if (icon == FontAwesomeIcons.question) {
-        final choices = [
-          FontAwesomeIcons.skull,
-          FontAwesomeIcons.coins,
-          FontAwesomeIcons.question,
-        ];
-        icon = choices[_rnd.nextInt(choices.length)];
+      } else {
+        // map a point type to an icon
+        final type = map.pointTypes[idx];
+        switch (type) {
+          case PointType.regular:
+            icon = FontAwesomeIcons.skull;
+          case PointType.elite:
+            icon = FontAwesomeIcons.skullCrossbones;
+          case PointType.merchant:
+            icon = FontAwesomeIcons.cashRegister;
+          case PointType.event:
+            icon = FontAwesomeIcons.book;
+          case PointType.safe:
+            icon = FontAwesomeIcons.water;
+          case PointType.unknown:
+            icon = FontAwesomeIcons.question;
+        }
       }
 
       // Build the font family string. When the font comes from a package
@@ -163,6 +173,7 @@ class _GeneratedMap {
   final Offset endPoint;
   final List<List<Offset>> paths;
   final List<int> activePointIndices;
+  final List<PointType> pointTypes;
 
   _GeneratedMap({
     required this.points,
@@ -170,8 +181,11 @@ class _GeneratedMap {
     required this.endPoint,
     required this.paths,
     required this.activePointIndices,
+    required this.pointTypes,
   });
 }
+
+enum PointType { regular, elite, merchant, event, safe, unknown }
 
 class _MapGenerator {
   final double size;
@@ -230,6 +244,31 @@ class _MapGenerator {
     final removed = <int>{};
     final paths = <List<Offset>>[];
     final activePoints = <int>[];
+    // assign weighted point types (biased toward regular mobs)
+    final pointTypes = List<PointType>.filled(points.length, PointType.regular);
+    final weights = {
+      PointType.regular: 60,
+      PointType.elite: 8,
+      PointType.merchant: 8,
+      PointType.event: 8,
+      PointType.safe: 10,
+      PointType.unknown: 6,
+    };
+    final totalWeight = weights.values.reduce((a, b) => a + b);
+    for (int i = 0; i < points.length; i++) {
+      // start and end keep default but still assign something
+      int r = rnd.nextInt(totalWeight);
+      var cum = 0;
+      PointType chosen = PointType.regular;
+      for (final entry in weights.entries) {
+        cum += entry.value;
+        if (r < cum) {
+          chosen = entry.key;
+          break;
+        }
+      }
+      pointTypes[i] = chosen;
+    }
 
     final startIdx = 0;
     final endIdx = 1;
@@ -238,6 +277,49 @@ class _MapGenerator {
     for (int it = 0; it < iterations; it++) {
       final path = _aStar(points, adj, startIdx, endIdx, removed);
       if (path.isEmpty) break;
+      // ensure each path has at least one safe point (not start/end)
+      bool hasSafe = false;
+      for (final idx in path) {
+        if (idx != startIdx &&
+            idx != endIdx &&
+            pointTypes[idx] == PointType.safe) {
+          hasSafe = true;
+          break;
+        }
+      }
+      if (!hasSafe && path.length > 2) {
+        // pick a random internal node and mark it safe
+        final internal = path[1 + rnd.nextInt(path.length - 2)];
+        if (internal != startIdx && internal != endIdx) {
+          // ensure neighbors are not safe to avoid consecutive safe points
+          final idxPos = path.indexOf(internal);
+          if (idxPos > 0) {
+            final left = path[idxPos - 1];
+            if (left != startIdx && left != endIdx) {
+              pointTypes[left] = PointType.regular;
+            }
+          }
+          if (idxPos < path.length - 1) {
+            final right = path[idxPos + 1];
+            if (right != startIdx && right != endIdx) {
+              pointTypes[right] = PointType.regular;
+            }
+          }
+          pointTypes[internal] = PointType.safe;
+        }
+      }
+      // Post-process path to ensure there are no consecutive safe points
+      for (int p = 0; p < path.length - 1; p++) {
+        final a = path[p];
+        final b = path[p + 1];
+        if (a != startIdx && a != endIdx && b != startIdx && b != endIdx) {
+          if (pointTypes[a] == PointType.safe &&
+              pointTypes[b] == PointType.safe) {
+            // demote the later one to regular
+            pointTypes[b] = PointType.regular;
+          }
+        }
+      }
       paths.add(path.map((i) => points[i]).toList());
       activePoints.addAll(path);
       // remove a random internal node
@@ -255,6 +337,7 @@ class _MapGenerator {
       endPoint: endPoint,
       paths: paths,
       activePointIndices: activePoints,
+      pointTypes: pointTypes,
     );
   }
 
