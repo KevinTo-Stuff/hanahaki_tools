@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 // Package imports:
 import 'package:auto_route/auto_route.dart';
+import 'package:hanahaki_tools/src/shared/locator.dart';
+import 'package:hanahaki_tools/src/shared/services/characters_service.dart';
 
 // Project imports:
 import 'package:hanahaki_tools/src/shared/models/character.dart';
@@ -23,8 +25,36 @@ class _CharactersScreenState extends State<CharactersScreen> {
   @override
   void initState() {
     super.initState();
-    // If no external injection is provided, generate a default sample set.
-    _characters = Character.generate(count: 6);
+    // Load characters from the shared CharactersService. If anything
+    // fails, fall back to generating a sample set.
+    _characters = [];
+    _loadCharacters();
+  }
+
+  Future<void> _loadCharacters() async {
+    try {
+      final svc = locator<CharactersService>();
+      await svc.init();
+      final chars = svc.getAll();
+      setState(() {
+        _characters = List.from(chars);
+        // Ensure default sort is Name ascending on load
+        _sortOption = SortOption(
+          field: SortField.name,
+          direction: SortDirection.asc,
+        );
+        _applySort();
+      });
+    } catch (e) {
+      setState(() {
+        _characters = Character.generate(count: 6);
+        _sortOption = SortOption(
+          field: SortField.name,
+          direction: SortDirection.asc,
+        );
+        _applySort();
+      });
+    }
   }
 
   void _addCharacter(Character c) {
@@ -32,6 +62,10 @@ class _CharactersScreenState extends State<CharactersScreen> {
       _characters.insert(0, c);
       _applySort();
     });
+    // Persist via service (best-effort)
+    try {
+      locator<CharactersService>().saveAll(_characters);
+    } catch (_) {}
   }
 
   void _removeCharacterAt(int index) {
@@ -39,6 +73,9 @@ class _CharactersScreenState extends State<CharactersScreen> {
       _characters.removeAt(index);
       _applySort();
     });
+    try {
+      locator<CharactersService>().saveAll(_characters);
+    } catch (_) {}
   }
 
   void _applySort() {
@@ -106,7 +143,8 @@ class _CharactersScreenState extends State<CharactersScreen> {
                           magic: 5,
                           endurance: 5,
                           luck: 1,
-                          level: 1, resistances: {},
+                          level: 1,
+                          resistances: {},
                         );
                         _addCharacter(c);
                         Navigator.of(context).pop();
